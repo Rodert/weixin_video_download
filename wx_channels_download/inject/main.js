@@ -40,7 +40,7 @@ async function __wx_channels_decrypt(seed) {
   // decryptor_array = undefined;
   return decryptor_array;
 }
-async function show_progress_or_loaded_size(response) {
+async function show_progress_or_loaded_size(response, downloadItemId, loadingInstance) {
   var content_length = response.headers.get("Content-Length");
   var chunks = [];
   var total_size = content_length ? parseInt(content_length, 10) : 0;
@@ -51,6 +51,9 @@ async function show_progress_or_loaded_size(response) {
   }
   var loaded_size = 0;
   var reader = response.body.getReader();
+  var lastUpdateTime = 0;
+  var updateInterval = 200; // 每200ms更新一次loading提示，避免闪烁
+  
   while (true) {
     var { done, value } = await reader.read();
     if (done) {
@@ -58,19 +61,58 @@ async function show_progress_or_loaded_size(response) {
     }
     chunks.push(value);
     loaded_size += value.length;
+    
+    var now = Date.now();
+    var shouldUpdateLoading = (now - lastUpdateTime) >= updateInterval;
+    
     if (total_size) {
       var progress = (loaded_size / total_size) * 100;
+      
+      // 更新下载列表中的进度（实时更新）
+      if (downloadItemId && typeof window.update_download_item_progress === "function") {
+        window.update_download_item_progress(downloadItemId, progress);
+      }
+      
+      // 更新 loading 提示的百分比（节流更新，避免闪烁）
+      if (shouldUpdateLoading && loadingInstance && typeof loadingInstance.update === "function") {
+        var progressText = progress.toFixed(1) + "%";
+        loadingInstance.update("下载中 " + progressText);
+        lastUpdateTime = now;
+      }
+      
       __wx_log({
         replace: 1,
         msg: `${progress.toFixed(2)}%`,
       });
     } else {
+      // 如果没有总大小，根据已下载大小估算进度（可选）
+      if (downloadItemId && typeof window.update_download_item_progress === "function") {
+        // 可以根据已下载大小显示一个估算进度，这里暂时不显示
+      }
+      
+      // 显示已下载字节数（节流更新）
+      if (shouldUpdateLoading && loadingInstance && typeof loadingInstance.update === "function") {
+        var sizeText = (loaded_size / 1024 / 1024).toFixed(2) + " MB";
+        loadingInstance.update("下载中 " + sizeText);
+        lastUpdateTime = now;
+      }
+      
       __wx_log({
         replace: 1,
         msg: `${loaded_size} Bytes`,
       });
     }
   }
+  // 下载完成，确保进度为100%
+  if (downloadItemId && typeof window.update_download_item_progress === "function") {
+    window.update_download_item_progress(downloadItemId, 100);
+  }
+  
+  // 更新 loading 提示为完成
+  if (loadingInstance && typeof loadingInstance.update === "function") {
+    loadingInstance.update("下载完成");
+  }
+  
   var blob = new Blob(chunks);
   return blob;
 }
@@ -89,8 +131,10 @@ async function __wx_channels_download2(profile, filename) {
   await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
   const ins = __wx_channel_loading();
   try {
+    // 尝试获取下载项ID（如果存在）
+    var downloadItemId = profile.downloadItemId;
     const response = await fetch(url);
-    const blob = await show_progress_or_loaded_size(response);
+    const blob = await show_progress_or_loaded_size(response, downloadItemId, ins);
     __wx_log({
       ignore_prefix: 1,
       msg: "",
@@ -155,8 +199,10 @@ async function __wx_channels_download4(profile, opt) {
     __wx_channels_pause_cur_video();
   }
   const ins = __wx_channel_loading();
+  // 尝试获取下载项ID（如果存在）
+  var downloadItemId = profile.downloadItemId;
   const response = await fetch(profile.url);
-  const blob = await show_progress_or_loaded_size(response);
+  const blob = await show_progress_or_loaded_size(response, downloadItemId, ins);
   __wx_log({
     ignore_prefix: 1,
     msg: "",
@@ -234,6 +280,10 @@ async function __wx_channels_handle_click_download__(spec, mp3) {
     return;
   }
   const _profile = { ...profile };
+  // 保留 downloadItemId（如果存在）
+  if (profile.downloadItemId) {
+    _profile.downloadItemId = profile.downloadItemId;
+  }
   var filename = __wx_build_filename(profile, spec, __wx_channels_config__.downloadFilenameTemplate);
   if (!filename) {
     alert("文件名生成失败");
@@ -335,19 +385,75 @@ var __wx_channels_store__ = {
   buffers: [],
 };
 
+// 隐藏三个点按钮
+function hide_three_dots_button() {
+  var style = document.createElement("style");
+  style.textContent = `
+    .op-more-btn,
+    .context-menu__wrp.item-gap-combine.op-more-btn,
+    [class*="op-more"],
+    [class*="more-btn"] {
+      display: none !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // 全局悬浮下载按钮（兜底，不依赖操作栏 DOM）
 function insert_floating_download_btn() {
   if (document.getElementById("__wx_channels_floating_download_btn__")) {
     return;
   }
+  
+  // 创建按钮容器
+  var btnContainer = document.createElement("div");
+  btnContainer.id = "__wx_channels_floating_download_btn__";
+  btnContainer.style.cssText =
+    "position: fixed; right: 24px; top: 100px; z-index: 999999; " +
+    "display: flex; align-items: center; gap: 8px;";
+  
+  // 创建主按钮
   var btn = document.createElement("div");
-  btn.id = "__wx_channels_floating_download_btn__";
   btn.style.cssText =
-    "position: fixed; right: 24px; bottom: 24px; z-index: 999999;" +
-    "background: #07c160; color: #fff; padding: 8px 12px;" +
-    "border-radius: 20px; font-size: 14px; cursor: pointer;" +
-    "box-shadow: 0 2px 8px rgba(0,0,0,.2);";
-  btn.innerText = "下载当前视频";
+    "background: linear-gradient(135deg, #07c160 0%, #06ad56 100%); " +
+    "color: #fff; padding: 12px 20px; border-radius: 25px; " +
+    "font-size: 15px; font-weight: 600; cursor: pointer; " +
+    "box-shadow: 0 4px 12px rgba(7, 193, 96, 0.4), 0 2px 4px rgba(0,0,0,.1); " +
+    "display: flex; align-items: center; gap: 8px; " +
+    "transition: all 0.3s ease; user-select: none; " +
+    "white-space: nowrap;";
+  
+  // 添加下载图标
+  var icon = document.createElement("span");
+  icon.innerHTML = "⬇️";
+  icon.style.cssText = "font-size: 18px; line-height: 1;";
+  
+  // 添加文字
+  var text = document.createElement("span");
+  text.textContent = "下载当前视频";
+  
+  btn.appendChild(icon);
+  btn.appendChild(text);
+  
+  // 悬停效果
+  btn.onmouseenter = function() {
+    this.style.transform = "scale(1.05)";
+    this.style.boxShadow = "0 6px 16px rgba(7, 193, 96, 0.5), 0 2px 6px rgba(0,0,0,.15)";
+  };
+  btn.onmouseleave = function() {
+    this.style.transform = "scale(1)";
+    this.style.boxShadow = "0 4px 12px rgba(7, 193, 96, 0.4), 0 2px 4px rgba(0,0,0,.1)";
+  };
+  
+  // 点击效果
+  btn.onmousedown = function() {
+    this.style.transform = "scale(0.98)";
+  };
+  btn.onmouseup = function() {
+    this.style.transform = "scale(1.05)";
+  };
+  
+  // 点击事件
   btn.onclick = function () {
     var store = window.__wx_channels_store__;
     if (!store || !store.profile) {
@@ -361,7 +467,33 @@ function insert_floating_download_btn() {
       : store.profile.spec[0];
     __wx_channels_handle_click_download__(spec);
   };
-  document.body.appendChild(btn);
+  
+  // 添加脉冲动画（吸引注意）
+  var pulseStyle = document.createElement("style");
+  pulseStyle.textContent = `
+    @keyframes pulse {
+      0%, 100% {
+        box-shadow: 0 4px 12px rgba(7, 193, 96, 0.4), 0 2px 4px rgba(0,0,0,.1);
+      }
+      50% {
+        box-shadow: 0 4px 12px rgba(7, 193, 96, 0.6), 0 2px 4px rgba(0,0,0,.1), 0 0 0 8px rgba(7, 193, 96, 0.1);
+      }
+    }
+    #__wx_channels_floating_download_btn__ > div:first-child {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  `;
+  document.head.appendChild(pulseStyle);
+  
+  btnContainer.appendChild(btn);
+  document.body.appendChild(btnContainer);
+  
+  // 延迟移除动画（3秒后停止，避免干扰）
+  setTimeout(function() {
+    if (btn.style) {
+      btn.style.animation = "none";
+    }
+  }, 3000);
 }
 
 var __wx_channels_video_download_btn__ = icon_download1();
@@ -481,6 +613,7 @@ async function insert_download_btn() {
   });
 }
 setTimeout(async () => {
-  insert_download_btn();
+  // insert_download_btn(); // 隐藏下载按钮
   insert_floating_download_btn();
+  hide_three_dots_button(); // 隐藏三个点按钮
 }, 800);

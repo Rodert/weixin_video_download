@@ -48,12 +48,44 @@ function __wx_channels_pause_cur_video() {
     window.__wx_channels_cur_video.player.pause();
   }
 }
-function __wx_channel_loading() {
+function __wx_channel_loading(initialText) {
+  var text = initialText || "下载中";
+  var currentInstance = null;
+  
   if (window.__wx_channels_tip__ && window.__wx_channels_tip__.loading) {
-    return window.__wx_channels_tip__.loading("下载中");
+    currentInstance = window.__wx_channels_tip__.loading(text);
+    
+    // 创建一个包装对象，支持更新文本
+    var wrapper = {
+      _instance: currentInstance,
+      _currentText: text,
+      
+      update: function(newText) {
+        if (window.__wx_channels_tip__ && window.__wx_channels_tip__.loading) {
+          // 隐藏旧的实例
+          if (this._instance && this._instance.hide) {
+            this._instance.hide();
+          }
+          // 创建新的实例显示新文本
+          this._currentText = newText;
+          this._instance = window.__wx_channels_tip__.loading(newText);
+        }
+      },
+      
+      hide: function() {
+        if (this._instance && this._instance.hide) {
+          this._instance.hide();
+        }
+        this._instance = null;
+      }
+    };
+    
+    return wrapper;
   }
+  
   return {
     hide() { },
+    update() { },
   };
 }
 function __wx_log(msg) {

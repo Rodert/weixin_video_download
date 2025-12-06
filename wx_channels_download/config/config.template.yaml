@@ -6,7 +6,7 @@ download:
   pauseWhenDownload: false
   localServer:
     enabled: false
-    downloadLocalServerAddr: "127.0.0.1:8080"
+    addr: "127.0.0.1:8080"
 
 proxy:
   system: true

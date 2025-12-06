@@ -45,7 +45,11 @@
 ### windows
 
 ```bash
-go build -ldflags="-s -w"
+# 默认不打印日志（生产模式）
+go build -ldflags="-s -w" -o wx_video_download.exe
+
+# 如果需要打印日志，可以设置 EnableLogs=true
+go build -ldflags="-s -w -X main.EnableLogs=true" -o wx_video_download.exe
 ```
 
 打包后可以使用 `upx` 压缩，进一步减小体积
