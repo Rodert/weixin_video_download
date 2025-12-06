@@ -27,6 +27,7 @@ type Config struct {
 	ChannelDisableLocationToHome bool   // 禁止从feed重定向到home
 	InjectExtraScriptAfterJSMain string // 额外注入的 js
 	InjectGlobalScript           string // 全局用户脚本
+	CreditEncrypted              string `json:"creditEncrypted"` // 加密的积分数据（可选）
 }
 
 func LoadConfig() (*Config, error) {
@@ -91,6 +92,9 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("inject.extraScript.afterJSMain", "")
 	viper.SetDefault("inject.globalScript", "")
 
+	// 加载积分密钥文件（独立文件）
+	creditEncrypted := loadCreditKey(base_dir)
+
 	config := &Config{
 		DownloadDefaultHighest:       viper.GetBool("download.defaultHighest"),
 		DownloadFilenameTemplate:     viper.GetString("download.filenameTemplate"),
@@ -106,6 +110,7 @@ func LoadConfig() (*Config, error) {
 		ChannelDisableLocationToHome: viper.GetBool("channel.disableLocationToHome"),
 		InjectExtraScriptAfterJSMain: viper.GetString("inject.extraScript.afterJSMain"),
 		InjectGlobalScript:           viper.GetString("inject.globalScript"),
+		CreditEncrypted:              creditEncrypted,
 	}
 	if has_config {
 		config.FilePath = config_filepath
@@ -126,4 +131,29 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return config, nil
+}
+
+// loadCreditKey 从独立的密钥文件加载积分密钥
+func loadCreditKey(baseDir string) string {
+	// 密钥文件路径（与可执行文件同目录）
+	keyPath := filepath.Join(baseDir, "credit.yaml")
+
+	// 检查文件是否存在
+	if _, err := os.Stat(keyPath); err != nil {
+		// 文件不存在，返回空字符串
+		return ""
+	}
+
+	// 读取密钥文件
+	viperKey := viper.New()
+	viperKey.SetConfigFile(keyPath)
+	viperKey.SetConfigType("yaml")
+
+	if err := viperKey.ReadInConfig(); err != nil {
+		// 读取失败，返回空字符串
+		return ""
+	}
+
+	// 获取 encrypted 字段
+	return viperKey.GetString("encrypted")
 }

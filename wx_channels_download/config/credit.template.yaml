@@ -1,0 +1,13 @@
+# 积分密钥配置文件模板
+# 请将此文件复制到可执行文件同目录，并重命名为 credit.yaml
+# 然后使用 generate-credit 命令生成 encrypted 值并填入
+
+encrypted: ""  # 加密的积分数据，使用 generate-credit 命令生成
+# 示例：encrypted: "c2kcuLHgcuxv9W3hAVJhQ7xouElo7pxanVMQyYZTC6qloXmRTfdUx9aY+ez/qtS14Agm98nM2QyCNjTayXVww1MqUIOpam1GlOgxmiyNiTWI/77y"
+
+# 注意：
+# 1. 此文件用于存储积分密钥，与主配置文件 config.yaml 分离
+# 2. 便于后续扩展其他字段（如版本号、备注等）
+# 3. 如果此文件不存在，积分功能将不会启用
+# 4. 每次消耗积分后，此文件会自动更新
+

@@ -31,11 +31,20 @@ function init_download_list() {
     <div style="font-weight: 600; font-size: 14px; color: #333;">
       下载列表 <span id="__wx_download_count__" style="color: #999; font-weight: normal;">(0)</span>
     </div>
-    <div style="display: flex; gap: 8px; align-items: center;">
-      <span id="__wx_download_mp3__" style="display: none; font-size: 11px; color: #1890ff; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;">下载MP3</span>
-      <span id="__wx_download_cover__" style="font-size: 11px; color: #1890ff; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;">下载封面</span>
-      <span id="__wx_download_toggle__" style="font-size: 12px; color: #666;">▼</span>
-      <span id="__wx_download_clear__" style="font-size: 12px; color: #07c160; cursor: pointer;">清空</span>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+      <!-- 积分显示区域 -->
+      <div id="__wx_credit_info__" style="font-size: 11px; display: flex; align-items: center; gap: 6px;">
+        <span style="color: #666;">积分:</span>
+        <span id="__wx_credit_points__" style="color: #07c160; font-weight: 600;">--</span>
+        <span id="__wx_credit_expires__" style="color: #999; font-size: 10px;">(--)</span>
+      </div>
+      <!-- 原有按钮 -->
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span id="__wx_download_mp3__" style="display: none; font-size: 11px; color: #1890ff; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;">下载MP3</span>
+        <span id="__wx_download_cover__" style="font-size: 11px; color: #1890ff; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;">下载封面</span>
+        <span id="__wx_download_toggle__" style="font-size: 12px; color: #666;">▼</span>
+        <span id="__wx_download_clear__" style="font-size: 12px; color: #07c160; cursor: pointer;">清空</span>
+      </div>
     </div>
   `;
 
@@ -604,10 +613,55 @@ function modify_floating_download_btn() {
     if (typeof window.__wx_channels_handle_click_download__ === 'function') {
       var original_download_handler = window.__wx_channels_handle_click_download__;
       
-      window.__wx_channels_handle_click_download__ = function (spec, mp3) {
+      window.__wx_channels_handle_click_download__ = async function (spec, mp3) {
         var profile = __wx_channels_store__.profile;
         if (!profile) {
           return original_download_handler.call(this, spec, mp3);
+        }
+
+        // 检查积分（解耦：通过 API 检查，不直接依赖积分模块）
+        if (typeof window.fetch_credit_info === "function") {
+          var creditCheck = await window.fetch_credit_info();
+          if (!creditCheck.valid) {
+            alert(creditCheck.error || "积分不足或已过期");
+            return;
+          }
+          
+          // 显示积分信息并确认
+          var expiresDate = new Date(creditCheck.expires_at * 1000);
+          var expiresStr = expiresDate.toLocaleDateString("zh-CN");
+          if (!confirm("当前积分：" + creditCheck.points + "\n到期时间：" + expiresStr + "\n本次下载将消耗 5 积分，确认下载？")) {
+            return;
+          }
+          
+          // 消耗积分
+          try {
+            var consumeResponse = await fetch("/__wx_channels_api/credit/consume", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            });
+            var consumeResult = await consumeResponse.json();
+            if (!consumeResult.success) {
+              alert(consumeResult.error || "扣除积分失败");
+              return;
+            }
+            
+            // 更新积分显示
+            if (typeof window.update_credit_display === "function") {
+              window.update_credit_display({
+                valid: true,
+                points: consumeResult.points,
+                start_at: consumeResult.start_at,
+                end_at: consumeResult.end_at,
+                expires_at: consumeResult.expires_at // 兼容旧格式
+              });
+            }
+          } catch (err) {
+            alert("扣除积分失败: " + err.message);
+            return;
+          }
         }
 
         // 确保使用最新的 profile 数据（深拷贝避免引用问题）
@@ -636,6 +690,14 @@ function modify_floating_download_btn() {
             result.then(function() {
               if (item) {
                 update_download_item_status(item.id, "completed");
+                // 更新积分显示（如果可用）
+                if (typeof window.fetch_credit_info === "function") {
+                  window.fetch_credit_info().then(function(creditInfo) {
+                    if (typeof window.update_credit_display === "function") {
+                      window.update_credit_display(creditInfo);
+                    }
+                  });
+                }
               }
             }).catch(function(err) {
               if (item) {
@@ -662,9 +724,130 @@ function modify_floating_download_btn() {
   }, 500);
 })();
 
+// 更新积分显示
+function update_credit_display(creditInfo) {
+  var pointsEl = document.getElementById("__wx_credit_points__");
+  var expiresEl = document.getElementById("__wx_credit_expires__");
+  var creditInfoEl = document.getElementById("__wx_credit_info__");
+  
+  if (!pointsEl || !expiresEl) {
+    return;
+  }
+  
+  if (!creditInfo || !creditInfo.valid) {
+    pointsEl.textContent = "0";
+    expiresEl.textContent = creditInfo?.error || "未配置";
+    if (creditInfoEl) {
+      creditInfoEl.style.color = "#ff4d4f";
+    }
+    return;
+  }
+  
+  // 更新积分数量
+  var points = creditInfo.points || 0;
+  pointsEl.textContent = points;
+  pointsEl.style.color = points < 5 ? "#ff4d4f" : "#07c160";
+  
+  // 更新到期时间（显示日期区间）
+  if (creditInfo.start_at && creditInfo.end_at) {
+    var startDate = new Date(creditInfo.start_at * 1000);
+    var endDate = new Date(creditInfo.end_at * 1000);
+    var now = new Date();
+    
+    if (now < startDate) {
+      // 尚未生效
+      expiresEl.textContent = "(" + startDate.toLocaleDateString("zh-CN") + "生效)";
+      expiresEl.style.color = "#1890ff";
+      if (creditInfoEl) {
+        creditInfoEl.style.color = "#666";
+      }
+    } else if (now > endDate) {
+      // 已过期
+      expiresEl.textContent = "(已过期)";
+      expiresEl.style.color = "#ff4d4f";
+      if (creditInfoEl) {
+        creditInfoEl.style.color = "#ff4d4f";
+      }
+    } else {
+      // 有效期内，显示结束日期
+      var daysLeft = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+      if (daysLeft <= 3) {
+        expiresEl.textContent = "(" + daysLeft + "天后过期)";
+        expiresEl.style.color = "#ff9800";
+      } else {
+        expiresEl.textContent = "(" + startDate.toLocaleDateString("zh-CN") + " ~ " + endDate.toLocaleDateString("zh-CN") + ")";
+        expiresEl.style.color = "#999";
+      }
+      if (creditInfoEl) {
+        creditInfoEl.style.color = "#666";
+      }
+    }
+  } else if (creditInfo.expires_at) {
+    // 兼容旧格式（如果存在）
+    var expiresDate = new Date(creditInfo.expires_at * 1000);
+    var now = new Date();
+    var daysLeft = Math.ceil((expiresDate - now) / (1000 * 60 * 60 * 24));
+    
+    if (daysLeft < 0) {
+      expiresEl.textContent = "(已过期)";
+      expiresEl.style.color = "#ff4d4f";
+      if (creditInfoEl) {
+        creditInfoEl.style.color = "#ff4d4f";
+      }
+    } else if (daysLeft <= 3) {
+      expiresEl.textContent = "(" + daysLeft + "天后过期)";
+      expiresEl.style.color = "#ff9800";
+      if (creditInfoEl) {
+        creditInfoEl.style.color = "#666";
+      }
+    } else {
+      expiresEl.textContent = "(" + expiresDate.toLocaleDateString("zh-CN") + ")";
+      expiresEl.style.color = "#999";
+      if (creditInfoEl) {
+        creditInfoEl.style.color = "#666";
+      }
+    }
+  }
+}
+
+// 获取积分信息
+async function fetch_credit_info() {
+  try {
+    const response = await fetch("/__wx_channels_api/credit/check", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    return { valid: false, error: "获取积分信息失败" };
+  }
+}
+
+// 定期更新积分显示（每30秒）
+function start_credit_timer() {
+  // 立即更新一次
+  fetch_credit_info().then(update_credit_display);
+  
+  // 每30秒更新一次
+  setInterval(function() {
+    fetch_credit_info().then(update_credit_display);
+  }, 30000);
+}
+
+// 将函数暴露到全局，以便其他模块调用
+window.update_credit_display = update_credit_display;
+window.fetch_credit_info = fetch_credit_info;
+
 // 初始化
 setTimeout(function () {
   init_download_list();
   modify_floating_download_btn();
+  // 启动积分更新定时器
+  setTimeout(function() {
+    start_credit_timer();
+  }, 1000);
 }, 1000);
 

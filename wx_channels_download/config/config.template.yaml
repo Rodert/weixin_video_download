@@ -15,3 +15,7 @@ proxy:
 
 channel:
   disableLocationToHome: false
+
+# 注意：积分密钥已移至独立的 credit.yaml 文件
+# 请在与可执行文件同目录下创建 credit.yaml 文件，内容格式：
+# encrypted: "加密的积分数据"
