@@ -1,0 +1,15 @@
+.DS_Store
+*.exe
+*.exe~
+*.syso
+dist/
+
+wx_video_download*
+wx_channel*
+
+config.yaml
+global.js
+
+docs/node_modules
+docs/.vitepress/cache
+docs/.vitepress/dist
