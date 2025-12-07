@@ -57,28 +57,26 @@ go build -ldflags="-s -w" -o wx_video_download
 使用 `generate-credit` 命令生成积分密钥：
 
 ```bash
-go run main.go generate-credit --points 1000 --start-date 2025.12.06 --end-date 2025.12.13
+go run main.go generate-credit --points 1000 --days 7
 ```
 
 **参数说明**：
-- `--points`：积分数量（必填，必须大于 0）
-- `--start-date`：开始日期（必填，格式：`2006.01.02` 或 `2006-01-02`）
-- `--end-date`：结束日期（必填，格式：`2006.01.02` 或 `2006-01-02`）
+- `--points`：积分数量（必填，必须大于 0，默认：1000）
+- `--days`：有效天数（必填，必须大于 0，从首次使用时开始计算）
 
-**支持的日期格式**：
-- `2006.01.02`（点分隔）
-- `2006-01-02`（横线分隔）
-- `2006/01/02`（斜线分隔）
-- `20060102`（无分隔符）
+**有效期说明**：
+- 有效期从用户首次使用积分下载时开始计算
+- 例如：生成 7 天有效期的密钥，用户在第 5 天首次使用，则有效期到第 12 天
+- 确保用户获得完整的有效期，不会因为生成时间而损失
 
 **示例**：
 
 ```bash
-# 生成 1000 积分，有效期 2025.12.06 到 2025.12.13
-go run main.go generate-credit --points 1000 --start-date 2025.12.06 --end-date 2025.12.13
+# 生成 1000 积分，有效期 7 天（从首次使用时开始计算）
+go run main.go generate-credit --points 1000 --days 7
 
-# 生成 500 积分，使用横线格式
-go run main.go generate-credit --points 500 --start-date 2025-12-06 --end-date 2025-12-20
+# 生成 500 积分，有效期 30 天
+go run main.go generate-credit --points 500 --days 30
 ```
 
 **输出示例**：
@@ -90,18 +88,28 @@ go run main.go generate-credit --points 500 --start-date 2025-12-06 --end-date 2
 
 请创建 credit.yaml 文件（与可执行文件同目录），内容如下：
 
-encrypted: dIW/mqaGaXV8TWutTPrGGrAficYWvdgzag3bUF3nmX1MhSobNKxqfHbGrsRIMa+Jk35aG6YgmI1w4x3n1YRKdX7Ez8xw9dn02PbwEwawJTLJQZJrtg==
+encrypted: n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B
 
 或者直接创建文件：
-echo encrypted: dIW/mqaGaXV8TWutTPrGGrAficYWvdgzag3bUF3nmX1MhSobNKxqfHbGrsRIMa+Jk35aG6YgmI1w4x3n1YRKdX7Ez8xw9dn02PbwEwawJTLJQZJrtg== > credit.yaml
+echo encrypted: n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B > credit.yaml
 
 积分信息：
   积分数量: 1000
-  开始时间: 2025-12-06 (00:00:00)
-  结束时间: 2025-12-13 (23:59:59)
+  有效天数: 7 天（从首次使用时开始计算）
+  激活状态: 未激活（首次使用时自动激活）
 
 ==============================================================
 ```
+
+**积分消耗规则**：
+- 下载视频：消耗 5 积分
+- 下载封面：消耗 1 积分
+
+**防重复使用机制**：
+- 每次下载后，原始密钥会被记录到 `.use` 文件（与可执行文件同目录）
+- 每次下载前，会检查密钥是否已被使用
+- 即使积分还有剩余，一旦使用过就无法再次使用相同的密钥
+- 防止用户通过替换密钥文件来重复使用已用完的密钥
 
 ### 2. 创建密钥文件
 
@@ -201,7 +209,7 @@ encrypted: "生成的加密字符串"
 
 1. **生成新密钥**
    ```bash
-   go run main.go generate-credit --points 1000 --start-date 2025.12.14 --end-date 2025.12.21
+   go run main.go generate-credit --points 1000 --days 7
    ```
 
 2. **提供给客户**
@@ -211,11 +219,18 @@ encrypted: "生成的加密字符串"
 3. **客户更新**
    - 客户将新的 `encrypted` 值更新到 `credit.yaml` 文件
    - 重启程序，新配置生效
+   - 首次使用时自动激活，从使用时间开始计算有效期
+
+**注意事项**：
+- 每个密钥只能使用一次，使用后会被记录到 `.use` 文件
+- 如果客户尝试重复使用已用完的密钥，系统会拒绝
+- 续期时需要提供全新的密钥，不能使用之前已使用过的密钥
 
 ### 配置文件位置
 
 - **主配置文件**：`config.yaml`（与可执行文件同目录）
 - **积分密钥文件**：`credit.yaml`（与可执行文件同目录）
+- **已使用密钥记录**：`.use`（与可执行文件同目录，自动生成，用于防止重复使用）
 - **全局脚本**：`global.js`（与可执行文件同目录，可选）
 
 ---

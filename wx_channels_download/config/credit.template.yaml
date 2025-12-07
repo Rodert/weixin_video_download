@@ -3,11 +3,34 @@
 # 然后使用 generate-credit 命令生成 encrypted 值并填入
 
 encrypted: ""  # 加密的积分数据，使用 generate-credit 命令生成
-# 示例：encrypted: "c2kcuLHgcuxv9W3hAVJhQ7xouElo7pxanVMQyYZTC6qloXmRTfdUx9aY+ez/qtS14Agm98nM2QyCNjTayXVww1MqUIOpam1GlOgxmiyNiTWI/77y"
+# 示例：encrypted: "n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B"
+
+# 生成密钥命令：
+# go run main.go generate-credit --points 1000 --days 7
+# 
+# 参数说明：
+# --points: 积分数量（必填，必须大于 0）
+# --days: 有效天数（必填，必须大于 0，从首次使用时开始计算）
+
+# 积分消耗规则：
+# - 下载视频：消耗 5 积分
+# - 下载封面：消耗 1 积分
+
+# 有效期说明：
+# - 有效期从用户首次使用积分下载时开始计算
+# - 例如：生成 7 天有效期的密钥，用户在第 5 天首次使用，则有效期到第 12 天
+# - 确保用户获得完整的有效期，不会因为生成时间而损失
+
+# 防重复使用机制：
+# - 每次下载后，原始密钥会被记录到 .use 文件（与可执行文件同目录）
+# - 每次下载前，会检查密钥是否已被使用
+# - 即使积分还有剩余，一旦使用过就无法再次使用相同的密钥
+# - 防止用户通过替换密钥文件来重复使用已用完的密钥
 
 # 注意：
 # 1. 此文件用于存储积分密钥，与主配置文件 config.yaml 分离
 # 2. 便于后续扩展其他字段（如版本号、备注等）
 # 3. 如果此文件不存在，积分功能将不会启用
 # 4. 每次消耗积分后，此文件会自动更新
+# 5. 每个密钥只能使用一次，使用后会被记录到 .use 文件
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -11,31 +10,26 @@ import (
 )
 
 var (
-	creditPoints    int64
-	creditStartDate string
-	creditEndDate   string
+	creditPoints int64
+	creditDays   int64 // 有效天数（从首次使用时开始计算）
 )
 
 var generateCreditCmd = &cobra.Command{
 	Use:   "generate-credit",
 	Short: "生成积分配置",
-	Long:  "生成加密的积分配置，包含积分数量和有效期",
+	Long:  "生成加密的积分配置，包含积分数量和有效期（从首次使用时开始计算）",
 	Run: func(cmd *cobra.Command, args []string) {
 		if creditPoints <= 0 {
 			fmt.Println("错误: 积分数量必须大于 0")
 			return
 		}
-		if creditStartDate == "" {
-			fmt.Println("错误: 必须指定开始日期 (--start-date)")
-			return
-		}
-		if creditEndDate == "" {
-			fmt.Println("错误: 必须指定结束日期 (--end-date)")
+		if creditDays <= 0 {
+			fmt.Println("错误: 有效天数必须大于 0 (--days)")
 			return
 		}
 
-		// 生成积分信息
-		info, err := credit.GenerateCreditInfo(creditPoints, creditStartDate, creditEndDate)
+		// 生成积分信息（从首次使用时开始计算）
+		info, err := credit.GenerateCreditInfoByDays(creditPoints, creditDays)
 		if err != nil {
 			fmt.Printf("生成失败: %v\n", err)
 			return
@@ -62,8 +56,8 @@ var generateCreditCmd = &cobra.Command{
 		fmt.Println()
 		fmt.Println("积分信息：")
 		fmt.Printf("  积分数量: %d\n", info.Points)
-		fmt.Printf("  开始时间: %s (00:00:00)\n", time.Unix(info.StartAt, 0).Format("2006-01-02"))
-		fmt.Printf("  结束时间: %s (23:59:59)\n", time.Unix(info.EndAt, 0).Format("2006-01-02"))
+		fmt.Printf("  有效天数: %d 天（从首次使用时开始计算）\n", creditDays)
+		fmt.Printf("  激活状态: 未激活（首次使用时自动激活）\n")
 		fmt.Println()
 		fmt.Println("=" + strings.Repeat("=", 60) + "=")
 	},
@@ -71,7 +65,6 @@ var generateCreditCmd = &cobra.Command{
 
 func init() {
 	generateCreditCmd.Flags().Int64Var(&creditPoints, "points", 1000, "积分数量")
-	generateCreditCmd.Flags().StringVar(&creditStartDate, "start-date", "", "开始日期（格式: 2006.01.02 或 2006-01-02）")
-	generateCreditCmd.Flags().StringVar(&creditEndDate, "end-date", "", "结束日期（格式: 2006.01.02 或 2006-01-02）")
+	generateCreditCmd.Flags().Int64Var(&creditDays, "days", 0, "有效天数（从首次使用时开始计算）")
 	Register(generateCreditCmd)
 }

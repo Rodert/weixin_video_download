@@ -4,7 +4,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,8 +21,10 @@ import (
 )
 
 const (
-	// CreditCostPerDownload 每次下载消耗的积分
+	// CreditCostPerDownload 每次下载视频消耗的积分
 	CreditCostPerDownload = 5
+	// CreditCostPerCover 每次下载封面消耗的积分
+	CreditCostPerCover = 1
 )
 
 var (
@@ -121,10 +125,122 @@ func DecryptCreditInfo(encrypted string) (*CreditInfo, error) {
 	return &info, nil
 }
 
-// CheckCredit 检查积分是否足够
+// hashKey 对密钥进行哈希编码，用于存储到 .use 文件（二进制格式，不可读）
+func hashKey(encrypted string) string {
+	h := sha256.Sum256([]byte(encrypted))
+	return hex.EncodeToString(h[:])
+}
+
+// isKeyUsed 检查密钥是否已被使用（在 .use 文件中）
+func isKeyUsed(baseDir, encrypted string) (bool, error) {
+	if baseDir == "" || encrypted == "" {
+		return false, nil
+	}
+
+	useFilePath := filepath.Join(baseDir, ".use")
+	if _, err := os.Stat(useFilePath); os.IsNotExist(err) {
+		return false, nil
+	}
+
+	data, err := os.ReadFile(useFilePath)
+	if err != nil {
+		return false, err
+	}
+
+	// 对当前密钥进行哈希
+	keyHash := hashKey(encrypted)
+
+	// 检查哈希是否在文件中
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == keyHash {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// recordUsedKey 将已用完或失效的密钥记录到 .use 文件
+func recordUsedKey(baseDir, encrypted string) error {
+	if encrypted == "" {
+		return nil
+	}
+
+	// 如果 baseDir 为空，尝试使用可执行文件目录
+	checkBaseDir := baseDir
+	if checkBaseDir == "" {
+		if exe, err := os.Executable(); err == nil {
+			checkBaseDir = filepath.Dir(exe)
+		}
+	}
+
+	if checkBaseDir == "" {
+		return nil // 无法确定目录，跳过记录
+	}
+
+	useFilePath := filepath.Join(checkBaseDir, ".use")
+
+	// 检查是否已存在
+	used, err := isKeyUsed(checkBaseDir, encrypted)
+	if err != nil {
+		return fmt.Errorf("检查密钥使用状态失败: %w", err)
+	}
+	if used {
+		return nil // 已存在，不需要重复记录
+	}
+
+	// 对密钥进行哈希编码
+	keyHash := hashKey(encrypted)
+
+	// 追加到文件（每行一个哈希值）
+	file, err := os.OpenFile(useFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("打开 .use 文件失败: %w", err)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(keyHash + "\n")
+	if err != nil {
+		return fmt.Errorf("写入 .use 文件失败: %w", err)
+	}
+
+	return nil
+}
+
+// CheckCredit 检查积分是否足够（兼容旧版本，不检查 .use 文件）
 func CheckCredit(encrypted string) (bool, *CreditInfo, error) {
+	return CheckCreditWithBaseDir(encrypted, "", CreditCostPerDownload)
+}
+
+// CheckCreditWithBaseDir 检查积分是否足够（带 baseDir 参数，用于检查 .use 文件）
+// cost: 需要的积分数，默认为 CreditCostPerDownload
+func CheckCreditWithBaseDir(encrypted, baseDir string, cost int64) (bool, *CreditInfo, error) {
+	if cost <= 0 {
+		cost = CreditCostPerDownload
+	}
 	if encrypted == "" {
 		return false, nil, errors.New("未配置积分")
+	}
+
+	// 检查密钥是否已被使用（必须在解密之前检查，且即使 baseDir 为空也要尝试检查）
+	// 如果 baseDir 为空，尝试使用可执行文件目录
+	checkBaseDir := baseDir
+	if checkBaseDir == "" {
+		if exe, err := os.Executable(); err == nil {
+			checkBaseDir = filepath.Dir(exe)
+		}
+	}
+
+	if checkBaseDir != "" {
+		used, err := isKeyUsed(checkBaseDir, encrypted)
+		if err != nil {
+			return false, nil, fmt.Errorf("检查密钥使用状态失败: %w", err)
+		}
+		if used {
+			return false, nil, errors.New("该密钥已被使用，无法重复使用")
+		}
 	}
 
 	info, err := DecryptCreditInfo(encrypted)
@@ -132,29 +248,71 @@ func CheckCredit(encrypted string) (bool, *CreditInfo, error) {
 		return false, nil, err
 	}
 
-	// 检查当前时间是否在有效区间内
 	now := time.Now().Unix()
+
+	// 如果 StartAt 还未生效（未激活状态），从当前时间开始计算，保持原有时长
+	// 这样可以在检查时就判断激活后的有效期
+	checkEndAt := info.EndAt
 	if now < info.StartAt {
-		startTime := time.Unix(info.StartAt, 0)
-		return false, info, fmt.Errorf("积分尚未生效，生效时间: %s", startTime.Format("2006-01-02 15:04:05"))
+		duration := info.EndAt - info.StartAt
+		checkEndAt = now + duration
 	}
-	if now > info.EndAt {
-		endTime := time.Unix(info.EndAt, 0)
+
+	// 检查当前时间是否在有效区间内（使用激活后的时间）
+	if now > checkEndAt {
+		// 积分已过期，记录到 .use 文件（即使 baseDir 为空也会尝试记录）
+		_ = recordUsedKey(baseDir, encrypted) // 记录失败不影响返回错误
+		endTime := time.Unix(checkEndAt, 0)
 		return false, info, fmt.Errorf("积分已过期，过期时间: %s", endTime.Format("2006-01-02 15:04:05"))
 	}
 
 	// 检查积分是否足够
-	if info.Points < CreditCostPerDownload {
-		return false, info, fmt.Errorf("积分不足，当前: %d，需要: %d", info.Points, CreditCostPerDownload)
+	if info.Points < cost {
+		// 积分不足，如果积分为0，记录到 .use 文件（即使 baseDir 为空也会尝试记录）
+		if info.Points <= 0 {
+			_ = recordUsedKey(baseDir, encrypted) // 记录失败不影响返回错误
+		}
+		return false, info, fmt.Errorf("积分不足，当前: %d，需要: %d", info.Points, cost)
 	}
 
 	return true, info, nil
 }
 
-// ConsumeCredit 消耗积分并返回新的加密数据
+// ConsumeCredit 消耗积分并返回新的加密数据（兼容旧版本，不检查 .use 文件）
 func ConsumeCredit(encrypted string) (string, *CreditInfo, error) {
+	return ConsumeCreditWithBaseDir(encrypted, "", CreditCostPerDownload)
+}
+
+// ConsumeCreditWithBaseDir 消耗积分并返回新的加密数据
+// 功能：
+// 1. 从用户开始使用的时间算起（如果 StartAt 还未生效，从当前时间开始计算，保持原有时长）
+// 2. 积分用完或失效时，记录到 .use 文件（使用哈希值，不可读）
+// cost: 消耗的积分数，默认为 CreditCostPerDownload
+func ConsumeCreditWithBaseDir(encrypted, baseDir string, cost int64) (string, *CreditInfo, error) {
+	if cost <= 0 {
+		cost = CreditCostPerDownload
+	}
 	if encrypted == "" {
 		return "", nil, errors.New("未配置积分")
+	}
+
+	// 检查密钥是否已被使用（必须在解密之前检查，且即使 baseDir 为空也要尝试检查）
+	// 如果 baseDir 为空，尝试使用可执行文件目录
+	checkBaseDir := baseDir
+	if checkBaseDir == "" {
+		if exe, err := os.Executable(); err == nil {
+			checkBaseDir = filepath.Dir(exe)
+		}
+	}
+
+	if checkBaseDir != "" {
+		used, err := isKeyUsed(checkBaseDir, encrypted)
+		if err != nil {
+			return "", nil, fmt.Errorf("检查密钥使用状态失败: %w", err)
+		}
+		if used {
+			return "", nil, errors.New("该密钥已被使用，无法重复使用")
+		}
 	}
 
 	info, err := DecryptCreditInfo(encrypted)
@@ -162,32 +320,55 @@ func ConsumeCredit(encrypted string) (string, *CreditInfo, error) {
 		return "", nil, err
 	}
 
-	// 检查当前时间是否在有效区间内
 	now := time.Now().Unix()
+	originalStartAt := info.StartAt
+	originalEndAt := info.EndAt
+
+	// 如果 StartAt 还未生效，从当前时间开始计算，保持原有时长
 	if now < info.StartAt {
-		startTime := time.Unix(info.StartAt, 0)
-		return "", info, fmt.Errorf("积分尚未生效，生效时间: %s", startTime.Format("2006-01-02 15:04:05"))
+		duration := info.EndAt - info.StartAt
+		info.StartAt = now
+		info.EndAt = now + duration
 	}
+
+	// 检查当前时间是否在有效区间内
 	if now > info.EndAt {
+		// 积分已过期，记录到 .use 文件（即使 baseDir 为空也会尝试记录）
+		_ = recordUsedKey(baseDir, encrypted) // 记录失败不影响返回错误
 		endTime := time.Unix(info.EndAt, 0)
 		return "", info, fmt.Errorf("积分已过期，过期时间: %s", endTime.Format("2006-01-02 15:04:05"))
 	}
 
 	// 检查积分是否足够
-	if info.Points < CreditCostPerDownload {
-		return "", info, fmt.Errorf("积分不足，当前: %d，需要: %d", info.Points, CreditCostPerDownload)
+	if info.Points < cost {
+		// 积分不足，如果积分为0，记录到 .use 文件（即使 baseDir 为空也会尝试记录）
+		if info.Points <= 0 {
+			_ = recordUsedKey(baseDir, encrypted) // 记录失败不影响返回错误
+		}
+		return "", info, fmt.Errorf("积分不足，当前: %d，需要: %d", info.Points, cost)
 	}
+
+	// 保存原始加密字符串（用于记录到 .use 文件）
+	originalEncrypted := encrypted
 
 	// 扣除积分
 	oldPoints := info.Points
-	info.Points -= CreditCostPerDownload
+	info.Points -= cost
 
 	// 重新加密
 	newEncrypted, err := EncryptCreditInfo(info)
 	if err != nil {
-		// 加密失败，恢复原积分
+		// 加密失败，恢复原积分和时间
 		info.Points = oldPoints
+		info.StartAt = originalStartAt
+		info.EndAt = originalEndAt
 		return "", nil, fmt.Errorf("加密失败: %w", err)
+	}
+
+	// 每次下载后，都记录原始密钥到 .use 文件（防止重复使用）
+	// 使用 checkBaseDir 确保与检查时使用相同的目录
+	if err := recordUsedKey(checkBaseDir, originalEncrypted); err != nil {
+		// 记录失败不影响主流程，只记录错误
 	}
 
 	return newEncrypted, info, nil
@@ -303,7 +484,32 @@ func ParseDate(dateStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("无法解析日期格式: %s，支持的格式: 2006.01.02, 2006-01-02, 2006/01/02, 20060102", dateStr)
 }
 
-// GenerateCreditInfo 生成新的积分信息（用于生成配置）
+// GenerateCreditInfoByDays 生成新的积分信息（用于生成配置，从首次使用时开始计算）
+// days: 有效天数（从首次使用时开始计算）
+func GenerateCreditInfoByDays(points int64, days int64) (*CreditInfo, error) {
+	if days <= 0 {
+		return nil, errors.New("有效天数必须大于 0")
+	}
+
+	// 将 StartAt 设置为一个未来的时间（9999-12-31），表示未激活
+	// 第一次使用时，ConsumeCreditWithBaseDir 会检测到 now < info.StartAt
+	// 然后从当前时间开始计算，保持原有时长
+	futureTime := time.Date(9999, 12, 31, 0, 0, 0, 0, time.Local)
+	startAt := futureTime.Unix()
+
+	// 计算结束时间：StartAt + 天数（秒数）
+	// 第一次使用时，会从当前时间开始，加上这个天数
+	durationSeconds := days * 24 * 60 * 60
+	endAt := startAt + durationSeconds
+
+	return &CreditInfo{
+		Points:  points,
+		StartAt: startAt,
+		EndAt:   endAt,
+	}, nil
+}
+
+// GenerateCreditInfo 生成新的积分信息（用于生成配置，兼容旧版本）
 // startDate: 开始日期，格式 "2006.01.02" 或 "2006-01-02"
 // endDate: 结束日期，格式 "2006.01.02" 或 "2006-01-02"
 func GenerateCreditInfo(points int64, startDate, endDate string) (*CreditInfo, error) {

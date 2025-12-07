@@ -634,13 +634,14 @@ function modify_floating_download_btn() {
             return;
           }
           
-          // 消耗积分
+          // 消耗积分（下载视频消耗5积分）
           try {
             var consumeResponse = await fetch("/__wx_channels_api/credit/consume", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
+              body: JSON.stringify({ cost: 5 }),
             });
             var consumeResult = await consumeResponse.json();
             if (!consumeResult.success) {
