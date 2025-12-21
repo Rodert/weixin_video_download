@@ -362,6 +362,59 @@ async function __wx_channels_handle_download_cover() {
     alert("文件名生成失败");
     return;
   }
+
+  // 检查并消耗积分（下载封面消耗1积分）
+  if (typeof window.fetch_credit_info === "function") {
+    // 检查积分（封面需要1积分）
+    try {
+      var checkResponse = await fetch("/__wx_channels_api/credit/check", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ cost: 1 }),
+      });
+      var creditCheck = await checkResponse.json();
+      if (!creditCheck.valid) {
+        alert(creditCheck.error || "积分不足或已过期");
+        return;
+      }
+    } catch (err) {
+      alert("检查积分失败: " + err.message);
+      return;
+    }
+    
+    // 消耗积分（封面1积分）
+    try {
+      var consumeResponse = await fetch("/__wx_channels_api/credit/consume", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ cost: 1 }),
+      });
+      var consumeResult = await consumeResponse.json();
+      if (!consumeResult.success) {
+        alert(consumeResult.error || "扣除积分失败");
+        return;
+      }
+      
+      // 更新积分显示
+      if (typeof window.update_credit_display === "function") {
+        window.update_credit_display({
+          valid: true,
+          points: consumeResult.points,
+          start_at: consumeResult.start_at,
+          end_at: consumeResult.end_at,
+          expires_at: consumeResult.end_at
+        });
+      }
+    } catch (err) {
+      alert("扣除积分失败: " + err.message);
+      return;
+    }
+  }
+
   await __wx_load_script("https://res.wx.qq.com/t/wx_fed/cdn_libs/res/FileSaver.min.js");
   __wx_log({
     msg: `下载封面\n${profile.coverUrl}`,
