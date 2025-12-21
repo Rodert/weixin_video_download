@@ -27,6 +27,7 @@ var (
 	channel_files  *interceptor.ChannelInjectedFiles
 	cert_file_name string
 	cfg            *config.Config
+	isDevMode      bool // 是否是开发模式
 )
 
 var root_cmd = &cobra.Command{
@@ -49,6 +50,7 @@ var root_cmd = &cobra.Command{
 				CertFileName:   cert_file_name,
 				ChannelFiles:   channel_files,
 				Cfg:            cfg,
+				IsDevMode:      isDevMode,
 			},
 		})
 	},
@@ -65,7 +67,7 @@ func init() {
 	viper.BindPFlag("debug", root_cmd.PersistentFlags().Lookup("debug"))
 }
 
-func Execute(app_ver string, cert_filename string, files1 *interceptor.ChannelInjectedFiles, files2 *interceptor.ServerCertFiles, c *config.Config) error {
+func Execute(app_ver string, cert_filename string, files1 *interceptor.ChannelInjectedFiles, files2 *interceptor.ServerCertFiles, c *config.Config, devMode bool) error {
 	cobra.MousetrapHelpText = ""
 
 	Version = app_ver
@@ -73,6 +75,7 @@ func Execute(app_ver string, cert_filename string, files1 *interceptor.ChannelIn
 	channel_files = files1
 	cert_files = files2
 	cfg = c
+	isDevMode = devMode
 
 	return root_cmd.Execute()
 }
@@ -94,10 +97,11 @@ func root_command(args RootCommandArg) {
 	signal.Notify(signal_chan, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signal_chan)
 
-	fmt.Printf("\nv%v\n", Version)
-	fmt.Printf("问题反馈 https://github.com/ltaoo/wx_channels_download/issues\n\n")
-	if args.Cfg.FilePath != "" {
-		fmt.Printf("配置文件 %s\n", args.Cfg.FilePath)
+	if isDevMode {
+		fmt.Printf("\nv%v\n", Version)
+		if args.Cfg.FilePath != "" {
+			fmt.Printf("配置文件 %s\n", args.Cfg.FilePath)
+		}
 	}
 
 	mgr := manager.NewServerManager()
@@ -131,7 +135,11 @@ func root_command(args RootCommandArg) {
 			cleanup()
 			os.Exit(1)
 		}
-		color.Green("下载服务启动成功")
+		if isDevMode {
+			color.Green(fmt.Sprintf("下载服务启动成功，地址: %s", args.Cfg.DownloadLocalServerAddr))
+		} else {
+			color.Green("下载服务启动成功")
+		}
 	}
 	// 启动代理服务
 	if err := mgr.StartServer("interceptor"); err != nil {
@@ -139,19 +147,27 @@ func root_command(args RootCommandArg) {
 		cleanup()
 		os.Exit(1)
 	}
-	color.Green("代理服务启动成功")
-
-	if !args.SetSystemProxy {
-		color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %v", interceptorServer.Addr()))
-		color.Red("设置成功后再打开视频号页面下载")
+	if isDevMode {
+		proxyAddr := fmt.Sprintf("%s:%d", args.Hostname, args.Port)
+		color.Green(fmt.Sprintf("代理服务启动成功，地址: %s", proxyAddr))
 	} else {
-		color.Green(fmt.Sprintf("已修改系统代理为 %v", interceptorServer.Addr()))
-		color.Green("请打开需要下载的视频号页面进行下载")
+		color.Green("代理服务启动成功")
+	}
+
+	if isDevMode {
+		proxyAddr := fmt.Sprintf("%s:%d", args.Hostname, args.Port)
+		if !args.SetSystemProxy {
+			color.Red(fmt.Sprintf("当前未设置系统代理,请通过软件将流量转发至 %s", proxyAddr))
+			color.Red("设置成功后再打开视频号页面下载")
+		} else {
+			color.Green(fmt.Sprintf("已修改系统代理为 %s", proxyAddr))
+			color.Green("请打开需要下载的视频号页面进行下载")
+		}
 	}
 	fmt.Println("\n按 Ctrl+C 退出...")
 
 	select {
-	case _ = <-signal_chan:
+	case <-signal_chan:
 		cleanup()
 	case err := <-err_chan:
 		fmt.Printf("ERROR %v\n", err.Error())

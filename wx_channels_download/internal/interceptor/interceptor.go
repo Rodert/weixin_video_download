@@ -13,15 +13,16 @@ import (
 )
 
 type ChannelInjectedFiles struct {
-	JSFileSaver []byte
-	JSZip       []byte
-	JSRecorder  []byte
-	JSPageSpy   []byte
-	JSDebug     []byte
-	JSUtils     []byte
-	JSError     []byte
-	JSMain      []byte
-	JSLiveMain  []byte
+	JSFileSaver    []byte
+	JSZip          []byte
+	JSRecorder     []byte
+	JSPageSpy      []byte
+	JSDebug        []byte
+	JSUtils        []byte
+	JSError        []byte
+	JSMain         []byte
+	JSLiveMain     []byte
+	JSDownloadList []byte
 }
 
 type ChannelMediaSpec struct {
@@ -81,6 +82,7 @@ type InterceptorConfig struct {
 	ChannelFiles   *ChannelInjectedFiles
 	Cfg            *config.Config
 	Debug          bool
+	IsDevMode      bool // 是否是开发模式
 }
 
 type Interceptor struct {
@@ -104,7 +106,13 @@ func NewInterceptor(payload InterceptorConfig) (*Interceptor, error) {
 	if err != nil {
 		return nil, err
 	}
-	client.AddPlugin(CreateChannelInterceptorPlugin(payload.Version, payload.ChannelFiles, payload.Cfg))
+	client.AddPlugin(CreateChannelInterceptorPlugin(payload.Version, payload.ChannelFiles, payload.Cfg, payload.IsDevMode))
+
+	// 如果配置了积分，添加积分插件（可选，解耦）
+	if payload.Cfg != nil && payload.Cfg.CreditEncrypted != "" {
+		client.AddPlugin(CreateCreditPlugin(payload.Cfg))
+	}
+
 	if payload.Debug {
 		client.AddPlugin(&echo.Plugin{
 			Match: "debug.weixin.qq.com",
