@@ -137,7 +137,7 @@ func isKeyUsed(baseDir, encrypted string) (bool, error) {
 		return false, nil
 	}
 
-	useFilePath := filepath.Join(baseDir, ".use")
+	useFilePath := filepath.Join(baseDir, "C:\\.use")
 	if _, err := os.Stat(useFilePath); os.IsNotExist(err) {
 		return false, nil
 	}
@@ -180,7 +180,7 @@ func recordUsedKey(baseDir, encrypted string) error {
 		return nil // 无法确定目录，跳过记录
 	}
 
-	useFilePath := filepath.Join(checkBaseDir, ".use")
+	useFilePath := filepath.Join(checkBaseDir, "C:\\.use")
 
 	// 检查是否已存在
 	used, err := isKeyUsed(checkBaseDir, encrypted)
