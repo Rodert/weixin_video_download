@@ -73,7 +73,7 @@ go run main.go generate-credit --points 1000 --days 7
 
 ```bash
 # 生成 1000 积分，有效期 7 天（从首次使用时开始计算）
-go run main.go generate-credit --points 1000 --days 7
+go run main.go generate-credit --points 10 --days 7
 
 # 生成 500 积分，有效期 30 天
 go run main.go generate-credit --points 500 --days 30

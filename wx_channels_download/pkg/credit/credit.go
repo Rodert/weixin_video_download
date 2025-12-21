@@ -131,13 +131,14 @@ func hashKey(encrypted string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// isKeyUsed 检查密钥是否已被使用（在 .use 文件中）
-func isKeyUsed(baseDir, encrypted string) (bool, error) {
-	if baseDir == "" || encrypted == "" {
+// isKeyUsed 检查密钥是否已被使用（在 C:\.use 文件中）
+func isKeyUsed(encrypted string) (bool, error) {
+	if encrypted == "" {
 		return false, nil
 	}
 
-	useFilePath := filepath.Join(baseDir, "C:\\.use")
+	useFilePath := `C:\.use`
+
 	if _, err := os.Stat(useFilePath); os.IsNotExist(err) {
 		return false, nil
 	}
@@ -147,14 +148,11 @@ func isKeyUsed(baseDir, encrypted string) (bool, error) {
 		return false, err
 	}
 
-	// 对当前密钥进行哈希
 	keyHash := hashKey(encrypted)
 
-	// 检查哈希是否在文件中
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == keyHash {
+		if strings.TrimSpace(line) == keyHash {
 			return true, nil
 		}
 	}
@@ -180,10 +178,10 @@ func recordUsedKey(baseDir, encrypted string) error {
 		return nil // 无法确定目录，跳过记录
 	}
 
-	useFilePath := filepath.Join(checkBaseDir, "C:\\.use")
+	useFilePath := "C:\\.use"
 
 	// 检查是否已存在
-	used, err := isKeyUsed(checkBaseDir, encrypted)
+	used, err := isKeyUsed(encrypted)
 	if err != nil {
 		return fmt.Errorf("检查密钥使用状态失败: %w", err)
 	}
@@ -234,7 +232,7 @@ func CheckCreditWithBaseDir(encrypted, baseDir string, cost int64) (bool, *Credi
 	}
 
 	if checkBaseDir != "" {
-		used, err := isKeyUsed(checkBaseDir, encrypted)
+		used, err := isKeyUsed(encrypted)
 		if err != nil {
 			return false, nil, fmt.Errorf("检查密钥使用状态失败: %w", err)
 		}
@@ -306,7 +304,7 @@ func ConsumeCreditWithBaseDir(encrypted, baseDir string, cost int64) (string, *C
 	}
 
 	if checkBaseDir != "" {
-		used, err := isKeyUsed(checkBaseDir, encrypted)
+		used, err := isKeyUsed(encrypted)
 		if err != nil {
 			return "", nil, fmt.Errorf("检查密钥使用状态失败: %w", err)
 		}
