@@ -67,11 +67,11 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				var data ChannelMediaProfile
 				if err := json.NewDecoder(ctx.Req.Body).Decode(&data); err != nil {
 					if isDevMode {
-					fmt.Println("[ECHO]handler", err.Error())
+						fmt.Println("[ECHO]handler", err.Error())
 					}
 				}
 				if isDevMode {
-				fmt.Printf("\n打开了视频\n%s\n", data.Title)
+					fmt.Printf("\n打开了视频\n%s\n", data.Title)
 				}
 				ctx.Mock(200, map[string]string{
 					"Content-Type": "application/json",
@@ -82,23 +82,23 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				var data FrontendTip
 				if err := json.NewDecoder(ctx.Req.Body).Decode(&data); err != nil {
 					if isDevMode {
-					fmt.Println("[ECHO]handler", err.Error())
+						fmt.Println("[ECHO]handler", err.Error())
 					}
 				}
 				if isDevMode {
-				prefix_text := "[FRONTEND]"
-				prefix := data.Prefix
-				if prefix == nil {
-					prefix = &prefix_text
-				}
-				if data.End == 1 {
-					fmt.Println()
-				} else if data.Replace == 1 {
-					fmt.Printf("\r\033[K%v%s", *prefix, data.Msg)
-				} else if data.IgnorePrefix == 1 {
-					fmt.Printf("%s\n", data.Msg)
-				} else {
-					fmt.Printf("%v%s\n", *prefix, data.Msg)
+					prefix_text := "[FRONTEND]"
+					prefix := data.Prefix
+					if prefix == nil {
+						prefix = &prefix_text
+					}
+					if data.End == 1 {
+						fmt.Println()
+					} else if data.Replace == 1 {
+						fmt.Printf("\r\033[K%v%s", *prefix, data.Msg)
+					} else if data.IgnorePrefix == 1 {
+						fmt.Printf("%s\n", data.Msg)
+					} else {
+						fmt.Printf("%v%s\n", *prefix, data.Msg)
 					}
 				}
 				ctx.Mock(200, map[string]string{
@@ -184,11 +184,11 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						inserted_scripts += script_main
 						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
 						if isDevMode {
-						if pathname == "/web/pages/home" {
-							fmt.Println("1. 视频号首页 html 注入 js 成功")
-						}
-						if pathname == "/web/pages/feed" {
-							fmt.Println("1. 视频详情页 html 注入 js 成功")
+							if pathname == "/web/pages/home" {
+								fmt.Println("1. 视频号首页 html 注入 js 成功")
+							}
+							if pathname == "/web/pages/feed" {
+								fmt.Println("1. 视频详情页 html 注入 js 成功")
 							}
 						}
 					}
@@ -197,7 +197,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 						inserted_scripts += script_live_main
 						html = strings.Replace(html, "<head>", "<head>\n"+inserted_scripts, 1)
 						if isDevMode {
-						fmt.Println("1. 直播详情页 html 注入 js 成功")
+							fmt.Println("1. 直播详情页 html 注入 js 成功")
 						}
 					}
 					ctx.SetResponseBody(html)
@@ -228,7 +228,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 									})(),this.sourceBuffer.appendBuffer($1),`
 					if jsSourceBufferReg.MatchString(js_script) {
 						if isDevMode {
-						fmt.Println("2. 视频播放 js 修改成功")
+							fmt.Println("2. 视频播放 js 修改成功")
 						}
 					}
 					js_script = jsSourceBufferReg.ReplaceAllString(js_script, replace_str1)
@@ -257,7 +257,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}async`
 					if jsCommentDetailReg.MatchString(js_script) {
 						if isDevMode {
-						fmt.Println("3.视频读取 js 修改成功")
+							fmt.Println("3.视频读取 js 修改成功")
 						}
 					}
 					js_script = jsCommentDetailReg.ReplaceAllString(js_script, replace_str1)
@@ -276,7 +276,7 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 				}async`
 					if jsLiveInfoReg.MatchString(js_script) {
 						if isDevMode {
-						fmt.Println("4.直播读取 js 修改成功")
+							fmt.Println("4.直播读取 js 修改成功")
 						}
 					}
 					js_script = jsLiveInfoReg.ReplaceAllString(js_script, replace_str3)
