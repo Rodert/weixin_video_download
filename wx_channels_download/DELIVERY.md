@@ -57,7 +57,7 @@ go build -ldflags="-s -w" -o wx_video_download
 使用 `generate-credit` 命令生成积分密钥：
 
 ```bash
-go run main.go generate-credit --points 1000 --days 7
+go run . generate-credit --points 1000 --days 7
 ```
 
 **参数说明**：
@@ -73,10 +73,10 @@ go run main.go generate-credit --points 1000 --days 7
 
 ```bash
 # 生成 1000 积分，有效期 7 天（从首次使用时开始计算）
-go run main.go generate-credit --points 10 --days 7
+go run . generate-credit --points 10 --days 7
 
 # 生成 500 积分，有效期 30 天
-go run main.go generate-credit --points 500 --days 30
+go run . generate-credit --points 500 --days 30
 ```
 
 **输出示例**：
@@ -86,16 +86,17 @@ go run main.go generate-credit --points 500 --days 30
 积分配置生成成功！
 ==============================================================
 
-请创建 credit.yaml 文件（与可执行文件同目录），内容如下：
+请创建 credit.txt 文件（与可执行文件同目录），内容如下：
 
-encrypted: n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B
+encrypted=n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B
 
 或者直接创建文件：
-echo encrypted: n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B > credit.yaml
+echo encrypted=n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6a/gLRn4N8m/8LvZhA2h5IGj4PCbOJV2z94R8eOPB+SbmIGujOi7B > credit.txt
 
 积分信息：
   积分数量: 1000
   有效天数: 7 天（从首次使用时开始计算）
+  版本号: v3
   激活状态: 未激活（首次使用时自动激活）
 
 ==============================================================
@@ -118,23 +119,23 @@ echo encrypted: n2wJFTONgbBzHxNo9DMNI6KEX62E/gWdZY+OQlY5HWmJC0BM2dEVt+vCJt2M6/V6
 1. 复制模板文件到可执行文件目录：
    ```bash
    # Windows (PowerShell)
-   Copy-Item config\credit.template.yaml .\credit.yaml
+   Copy-Item config\credit.template.txt .\credit.txt
    
    # Linux/macOS
-   cp config/credit.template.yaml ./credit.yaml
+   cp config/credit.template.txt ./credit.txt
    ```
 
-2. 编辑 `credit.yaml`，将生成的 `encrypted` 值填入：
-   ```yaml
-   encrypted: "生成的加密字符串"
+2. 编辑 `credit.txt`，将生成的 `encrypted` 值填入：
+   ```
+   encrypted=生成的加密字符串
    ```
 
 **方法二：手动创建**
 
-在与可执行文件同目录下创建 `credit.yaml` 文件，内容为：
+在与可执行文件同目录下创建 `credit.txt` 文件，内容为：
 
-```yaml
-encrypted: "生成的加密字符串"
+```
+encrypted=生成的加密字符串
 ```
 
 ### 3. 验证密钥
@@ -209,15 +210,15 @@ encrypted: "生成的加密字符串"
 
 1. **生成新密钥**
    ```bash
-   go run main.go generate-credit --points 1000 --days 7
+   go run . generate-credit --points 1000 --days 7
    ```
 
 2. **提供给客户**
    - 将生成的 `encrypted` 值发送给客户
-   - 或直接提供新的 `credit.yaml` 文件
+   - 或直接提供新的 `credit.txt` 文件
 
 3. **客户更新**
-   - 客户将新的 `encrypted` 值更新到 `credit.yaml` 文件
+   - 客户将新的 `encrypted` 值更新到 `credit.txt` 文件
    - 重启程序，新配置生效
    - 首次使用时自动激活，从使用时间开始计算有效期
 
@@ -229,7 +230,8 @@ encrypted: "生成的加密字符串"
 ### 配置文件位置
 
 - **主配置文件**：`config.yaml`（与可执行文件同目录）
-- **积分密钥文件**：`credit.yaml`（与可执行文件同目录）
+- **积分密钥文件**：`credit.txt`（与可执行文件同目录）
+- **版本文件**：`version.txt`（与可执行文件同目录，当前版本 v3）
 - **已使用密钥记录**：`.use`（与可执行文件同目录，自动生成，用于防止重复使用）
 - **全局脚本**：`global.js`（与可执行文件同目录，可选）
 
@@ -284,14 +286,15 @@ A: 检查：
 A: 
 1. 使用 `generate-credit` 命令生成新的密钥
 2. 将新的 `encrypted` 值提供给客户
-3. 客户更新 `credit.yaml` 文件中的 `encrypted` 字段
+3. 客户更新 `credit.txt` 文件中的 `encrypted` 值
 4. 重启程序
 
 ### Q: 配置文件在哪里？
 
 A: 
 - 主配置文件：`config.yaml`（与可执行文件同目录）
-- 积分密钥文件：`credit.yaml`（与可执行文件同目录）
+- 积分密钥文件：`credit.txt`（与可执行文件同目录）
+- 版本文件：`version.txt`（与可执行文件同目录，当前版本 v3）
 - 如果不存在，程序会使用默认配置
 
 ---
