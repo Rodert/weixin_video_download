@@ -33,8 +33,8 @@ var (
 
 // CreditInfo 积分信息
 type CreditInfo struct {
-	Version string `json:"version"` // 版本号（用于版本隔离，v1, v2, v3, v4, v5...）
-	Points  int64  `json:"points"`  // 积分数量
+	Version string `json:"version"`  // 版本号（用于版本隔离，v1, v2, v3, v4, v5...）
+	Points  int64  `json:"points"`   // 积分数量
 	StartAt int64  `json:"start_at"` // 开始时间戳（Unix时间戳，当天0点）
 	EndAt   int64  `json:"end_at"`   // 结束时间戳（Unix时间戳，当天23:59:59）
 }
@@ -48,43 +48,76 @@ var (
 // 支持任意版本号格式：v1, v2, v3, v4, v5...
 // 在开发模式下（go run），会尝试从当前工作目录和源代码目录读取
 func ReadVersion(baseDir string) (string, error) {
-	if baseDir == "" {
-		if exe, err := os.Executable(); err == nil {
-			baseDir = filepath.Dir(exe)
-		}
-	}
-
 	// 尝试读取版本文件的路径列表（按优先级）
 	var versionPaths []string
 
-	// 1. 如果指定了 baseDir，优先使用
-	if baseDir != "" {
-		versionPaths = append(versionPaths, filepath.Join(baseDir, "version.txt"))
-	}
-
-	// 2. 尝试从当前工作目录读取（开发模式：go run）
-	if wd, err := os.Getwd(); err == nil {
-		versionPaths = append(versionPaths, filepath.Join(wd, "version.txt"))
-		// 如果在子目录中运行，尝试从父目录读取
-		parentDir := filepath.Dir(wd)
-		if parentDir != wd {
-			versionPaths = append(versionPaths, filepath.Join(parentDir, "version.txt"))
-		}
-	}
-
-	// 3. 尝试从可执行文件目录读取（如果 baseDir 为空）
-	if baseDir == "" {
-		if exe, err := os.Executable(); err == nil {
-			exeDir := filepath.Dir(exe)
+	// 1. 优先从可执行文件目录读取（生产环境）
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		// 使用 filepath.Clean 和 filepath.Abs 确保路径正确
+		if absExeDir, err := filepath.Abs(exeDir); err == nil {
+			versionPaths = append(versionPaths, filepath.Join(absExeDir, "version.txt"))
+		} else {
 			versionPaths = append(versionPaths, filepath.Join(exeDir, "version.txt"))
 		}
 	}
 
+	// 2. 如果指定了 baseDir，也尝试使用
+	if baseDir != "" {
+		if absBaseDir, err := filepath.Abs(baseDir); err == nil {
+			versionPaths = append(versionPaths, filepath.Join(absBaseDir, "version.txt"))
+		} else {
+			versionPaths = append(versionPaths, filepath.Join(baseDir, "version.txt"))
+		}
+	}
+
+	// 3. 尝试从当前工作目录读取（开发模式：go run）
+	if wd, err := os.Getwd(); err == nil {
+		if absWd, err := filepath.Abs(wd); err == nil {
+			versionPaths = append(versionPaths, filepath.Join(absWd, "version.txt"))
+		} else {
+			versionPaths = append(versionPaths, filepath.Join(wd, "version.txt"))
+		}
+		// 如果在子目录中运行，尝试从父目录读取
+		parentDir := filepath.Dir(wd)
+		if parentDir != wd {
+			if absParentDir, err := filepath.Abs(parentDir); err == nil {
+				versionPaths = append(versionPaths, filepath.Join(absParentDir, "version.txt"))
+			} else {
+				versionPaths = append(versionPaths, filepath.Join(parentDir, "version.txt"))
+			}
+		}
+	}
+
+	// 去重（避免重复路径）
+	seen := make(map[string]bool)
+	var uniquePaths []string
+	for _, path := range versionPaths {
+		// 标准化路径（Windows 上统一使用反斜杠）
+		normalizedPath := filepath.Clean(path)
+		if !seen[normalizedPath] {
+			seen[normalizedPath] = true
+			uniquePaths = append(uniquePaths, normalizedPath)
+		}
+	}
+
 	// 按优先级尝试读取
-	for _, versionPath := range versionPaths {
+	for _, versionPath := range uniquePaths {
 		data, err := os.ReadFile(versionPath)
 		if err == nil {
+			// 去除所有空白字符（空格、制表符、换行符、回车符等）
 			version := strings.TrimSpace(string(data))
+			// 去除 BOM（字节顺序标记，Windows 上常见）
+			version = strings.TrimPrefix(version, "\ufeff")
+			// 去除所有空白字符后再次检查
+			version = strings.TrimSpace(version)
+			// 只取第一行（如果有换行符）
+			if idx := strings.Index(version, "\n"); idx > 0 {
+				version = strings.TrimSpace(version[:idx])
+			}
+			if idx := strings.Index(version, "\r"); idx > 0 {
+				version = strings.TrimSpace(version[:idx])
+			}
 			if version != "" {
 				// 支持任意版本号格式（v1, v2, v3, v4, v5...）
 				return version, nil

@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 	"unsafe"
 
@@ -83,6 +84,21 @@ func setConsoleFont() {
 func printVersion() {
 	// 读取 version.txt 中的版本号
 	version := credit.GetCurrentVersion()
+	
+	// 如果读取失败（显示 v1），尝试输出调试信息
+	if version == "v1" {
+		// 尝试获取可执行文件路径，帮助用户定位问题
+		if exe, err := os.Executable(); err == nil {
+			exeDir := filepath.Dir(exe)
+			versionPath := filepath.Join(exeDir, "version.txt")
+			fmt.Printf("[调试] 可执行文件目录: %s\n", exeDir)
+			fmt.Printf("[调试] 尝试读取版本文件: %s\n", versionPath)
+			if wd, err := os.Getwd(); err == nil {
+				fmt.Printf("[调试] 当前工作目录: %s\n", wd)
+			}
+		}
+	}
+	
 	versionInfo := fmt.Sprintf("视频号下载器\n版本: %s", version)
 	fmt.Println()
 	fmt.Println("========================================")
