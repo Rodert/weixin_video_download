@@ -22,7 +22,7 @@ func printVersion() {
 	// 读取 version.txt 中的版本号
 	version := credit.GetCurrentVersion()
 	
-	versionInfo := fmt.Sprintf("视频号下载器\n版本: %s", version)
+	versionInfo := fmt.Sprintf("视频号下载器X\n版本: %s", version)
 	fmt.Println()
 	fmt.Println("========================================")
 	fmt.Println(versionInfo)

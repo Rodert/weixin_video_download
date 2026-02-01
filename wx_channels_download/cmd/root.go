@@ -33,7 +33,7 @@ var (
 var root_cmd = &cobra.Command{
 	Use:   "wx_video_download",
 	Short: "启动下载程序",
-	Long:  "\n启动后将对网络请求进行代理，在微信视频号详情页面注入下载按钮",
+	Long:  "\n启动后将对网络请求进行代理，在视频号详情页面注入下载按钮",
 	PreRun: func(cmd *cobra.Command, args []string) {
 	},
 	Run: func(cmd *cobra.Command, args []string) {
