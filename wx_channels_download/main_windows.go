@@ -7,6 +7,8 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+
+	"wx_channel/pkg/credit"
 )
 
 // disableConsoleQuickEdit 禁用 Windows 控制台的快速编辑模式
@@ -39,7 +41,9 @@ func setConsoleTitle() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	setConsoleTitle := kernel32.NewProc("SetConsoleTitleW")
 
-	title := fmt.Sprintf("视频号下载器 - 版本: %s", getBuildTime())
+	// 读取 version.txt 中的版本号
+	version := credit.GetCurrentVersion()
+	title := fmt.Sprintf("视频号下载器 - 版本: %s", version)
 	titlePtr, _ := syscall.UTF16PtrFromString(title)
 
 	setConsoleTitle.Call(uintptr(unsafe.Pointer(titlePtr)))
@@ -77,10 +81,12 @@ func setConsoleFont() {
 
 // printVersion 打印版本信息（大字体）
 func printVersion() {
-	version := fmt.Sprintf("视频号下载器\n版本: %s", getBuildTime())
+	// 读取 version.txt 中的版本号
+	version := credit.GetCurrentVersion()
+	versionInfo := fmt.Sprintf("视频号下载器\n版本: %s", version)
 	fmt.Println()
 	fmt.Println("========================================")
-	fmt.Println(version)
+	fmt.Println(versionInfo)
 	fmt.Println("========================================")
 	fmt.Println()
 }
