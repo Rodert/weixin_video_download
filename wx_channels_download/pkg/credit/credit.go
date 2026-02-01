@@ -46,29 +46,54 @@ var (
 
 // ReadVersion 从 version.txt 读取版本号，失败时返回默认版本 v1
 // 支持任意版本号格式：v1, v2, v3, v4, v5...
+// 在开发模式下（go run），会尝试从当前工作目录和源代码目录读取
 func ReadVersion(baseDir string) (string, error) {
 	if baseDir == "" {
 		if exe, err := os.Executable(); err == nil {
 			baseDir = filepath.Dir(exe)
 		}
 	}
+
+	// 尝试读取版本文件的路径列表（按优先级）
+	var versionPaths []string
+
+	// 1. 如果指定了 baseDir，优先使用
+	if baseDir != "" {
+		versionPaths = append(versionPaths, filepath.Join(baseDir, "version.txt"))
+	}
+
+	// 2. 尝试从当前工作目录读取（开发模式：go run）
+	if wd, err := os.Getwd(); err == nil {
+		versionPaths = append(versionPaths, filepath.Join(wd, "version.txt"))
+		// 如果在子目录中运行，尝试从父目录读取
+		parentDir := filepath.Dir(wd)
+		if parentDir != wd {
+			versionPaths = append(versionPaths, filepath.Join(parentDir, "version.txt"))
+		}
+	}
+
+	// 3. 尝试从可执行文件目录读取（如果 baseDir 为空）
 	if baseDir == "" {
-		return "v1", nil // 无法确定目录时返回默认版本 v1
+		if exe, err := os.Executable(); err == nil {
+			exeDir := filepath.Dir(exe)
+			versionPaths = append(versionPaths, filepath.Join(exeDir, "version.txt"))
+		}
 	}
 
-	versionPath := filepath.Join(baseDir, "version.txt")
-	data, err := os.ReadFile(versionPath)
-	if err != nil {
-		return "v1", nil // 读取失败时返回默认版本 v1
+	// 按优先级尝试读取
+	for _, versionPath := range versionPaths {
+		data, err := os.ReadFile(versionPath)
+		if err == nil {
+			version := strings.TrimSpace(string(data))
+			if version != "" {
+				// 支持任意版本号格式（v1, v2, v3, v4, v5...）
+				return version, nil
+			}
+		}
 	}
 
-	version := strings.TrimSpace(string(data))
-	if version == "" {
-		return "v1", nil // 版本号为空时返回默认版本 v1
-	}
-
-	// 支持任意版本号格式（v1, v2, v3, v4, v5...）
-	return version, nil
+	// 所有路径都读取失败，返回默认版本 v1
+	return "v1", nil
 }
 
 // GetCurrentVersion 获取当前版本号（读取失败时返回 v1）
