@@ -105,4 +105,8 @@ func printVersion() {
 	fmt.Println(versionInfo)
 	fmt.Println("========================================")
 	fmt.Println()
+	fmt.Println("下载器下载地址: http://wx.wukongkt.vip:28088/")
+	fmt.Println("联系微信: wangshiyu2046")
+	fmt.Println("诚信质保")
+	fmt.Println()
 }
