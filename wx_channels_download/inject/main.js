@@ -438,6 +438,103 @@ var __wx_channels_store__ = {
   buffers: [],
 };
 
+// 简单的事件总线系统
+var __wx_channels_events__ = {
+  listeners: {},
+  on: function(event, callback) {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(callback);
+  },
+  emit: function(event, data) {
+    if (this.listeners[event]) {
+      this.listeners[event].forEach(function(callback) {
+        try {
+          callback(data);
+        } catch (err) {
+          console.error('[__wx_channels_events__] Error in event handler:', err);
+        }
+      });
+    }
+  },
+  off: function(event, callback) {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter(function(cb) {
+        return cb !== callback;
+      });
+    }
+  }
+};
+// 确保事件总线在 window 对象上可用
+window.__wx_channels_events__ = __wx_channels_events__;
+
+// 设置 feed 并格式化
+function __wx_set_feed(feed) {
+  if (!feed) {
+    return;
+  }
+  var profile = __wx_format_feed(feed);
+  if (!profile) {
+    console.warn('[__wx_set_feed] 无法格式化 feed:', feed);
+    return;
+  }
+  // 检查是否已存在
+  if (window.__wx_channels_store__.profiles.length) {
+    var existing = window.__wx_channels_store__.profiles.find(function(v) {
+      return v.id === profile.id;
+    });
+    if (existing) {
+      return;
+    }
+  }
+  // 设置 profile
+  window.__wx_channels_store__.profile = profile;
+  window.__wx_channels_store__.profiles.push(profile);
+  // 设置当前视频元素
+  setTimeout(function() {
+    window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
+  }, 800);
+  // 发送到后端
+  fetch("/__wx_channels_api/profile", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(profile)
+  });
+}
+
+// 监听 FeedProfileLoaded 事件
+__wx_channels_events__.on('FeedProfileLoaded', function(feed) {
+  console.log('[main.js] FeedProfileLoaded', feed);
+  __wx_set_feed(feed);
+});
+
+// 监听 GotoNextFeed 事件
+__wx_channels_events__.on('GotoNextFeed', function(feed) {
+  console.log('[main.js] GotoNextFeed', feed);
+  __wx_set_feed(feed);
+  setTimeout(function() {
+    window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
+  }, 800);
+  if (window.__insert_download_btn_to_home_page) {
+    window.__insert_download_btn_to_home_page();
+  }
+});
+
+// 监听 GotoPrevFeed 事件
+__wx_channels_events__.on('GotoPrevFeed', function(feed) {
+  console.log('[main.js] GotoPrevFeed', feed);
+  __wx_set_feed(feed);
+  setTimeout(function() {
+    window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
+  }, 800);
+  if (window.__insert_download_btn_to_home_page) {
+    window.__insert_download_btn_to_home_page();
+  }
+});
+
 // 隐藏三个点按钮
 function hide_three_dots_button() {
   var style = document.createElement("style");

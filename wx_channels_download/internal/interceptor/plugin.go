@@ -243,67 +243,18 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					ctx.SetResponseBody(js_script)
 					return
 				}
-				media_profile_js := `var profile = media.mediaType !== 4 ? {
-									type: "picture",
-									id: data_object.id,
-									title: data_object.objectDesc.description,
-									files: data_object.objectDesc.media,
-									spec: [],
-									contact: data_object.contact
-								} : {
-									type: "media",
-									duration: media.spec[0] ? media.spec[0].durationMs : 0,
-									spec: media.spec,
-									title: data_object.objectDesc.description,
-									coverUrl: media.coverUrl,
-									url: media.url+media.urlToken,
-									size: media.fileSize ? Number(media.fileSize) : 0,
-									key: media.decodeKey,
-									id: data_object.id,
-									nonce_id: data_object.objectNonceId,
-									nickname: data_object.nickname,
-									createtime: data_object.createtime,
-									fileFormat: media.spec.map(o => o.fileFormat),
-									contact: data_object.contact
-								};
-								(() => {
-									if (!window.__wx_channels_store__) {
-									return;
-									}
-									if (window.__wx_channels_store__.profiles.length) {
-										var existing = window.__wx_channels_store__.profiles.find(function(v){
-											return v.id === profile.id;
-										});
-										if (existing) {
-											return;
-										}
-									}
-									__wx_channels_store__.profile = profile;
-									window.__wx_channels_store__.profiles.push(profile);
-									setTimeout(() => {
-										window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-									},800);
-									fetch("/__wx_channels_api/profile", {
-										method: "POST",
-										headers: {
-											"Content-Type": "application/json"
-										},
-										body: JSON.stringify(profile)
-									});
-								})();`
 				if util.Includes(pathname, "/t/wx_fed/finder/web/web-finder/res/js/virtual_svg-icons-register") {
-					replace_str1 := fmt.Sprintf(`async finderGetCommentDetail($1) {
-					var feedResult = await (async () => {
+					replace_str1 := `async finderGetCommentDetail($1) {
+					var result = await (async () => {
 						$2;
 					})();
-					var data_object = feedResult.data.object;
-					if (!data_object.objectDesc) {
-						return feedResult;
+					var feed = result.data.object;
+					console.log("before FeedProfileLoaded", result.data);
+					if (window.__wx_channels_events__) {
+						window.__wx_channels_events__.emit('FeedProfileLoaded', feed);
 					}
-					var media = data_object.objectDesc.media[0];
-					%v
-					return feedResult;
-				}async`, media_profile_js)
+					return result;
+				}async`
 					if jsCommentDetailReg.MatchString(js_script) {
 						if isDevMode {
 						fmt.Println("3.视频读取 js 修改成功")
@@ -312,26 +263,17 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					js_script = jsCommentDetailReg.ReplaceAllString(js_script, replace_str1)
 					replace_str2 := `i.default=window.window.__wx_channels_tip__={dialog`
 					js_script = jsDialogReg.ReplaceAllString(js_script, replace_str2)
-					replace_str3 := fmt.Sprintf(`async finderGetLiveInfo($1) {
-					var feedResult = await (async () => {
+					replace_str3 := `async finderGetLiveInfo($1) {
+					var result = await (async () => {
 						$2;
 					})();
-					var profile = {
-						title: feedResult.data.description || "直播",
-						url: feedResult.data.liveInfo.streamUrl,
-					};
-					if (window.__wx_channels_live_store__) {
-						__wx_channels_live_store__.profile = profile;
+					var live = result.data;
+					console.log("before LiveProfileLoaded", result.data);
+					if (window.__wx_channels_events__) {
+						window.__wx_channels_events__.emit('FeedProfileLoaded', live);
 					}
-					fetch("/__wx_channels_api/profile", {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json"
-						},
-						body: JSON.stringify(profile)
-					});
-					return feedResult;
-				}async`)
+					return result;
+				}async`
 					if jsLiveInfoReg.MatchString(js_script) {
 						if isDevMode {
 						fmt.Println("4.直播读取 js 修改成功")
@@ -342,33 +284,31 @@ func CreateChannelInterceptorPlugin(version string, files *ChannelInjectedFiles,
 					return
 				}
 				if util.Includes(pathname, "connect.publish") {
-					replace_str1 := fmt.Sprintf(`goToNextFlowFeed:async function(v){
-									await $1(v);
-									setTimeout(() => {
-									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
-									console.log("handle goto next feed", Dt, data_object);
-									var media = data_object.objectDesc.media[0];
-									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-									%v
-									if (window.__insert_download_btn_to_home_page) {
-				__insert_download_btn_to_home_page();
-									}
-									}, 0);
-									}`, media_profile_js)
+					replace_str1 := `goToNextFlowFeed:async function(v){
+						await $1(v);
+						console.log('goToNextFlowFeed', Dt);
+						if (!Dt || !Dt.value || !Dt.value.feeds) {
+							return;
+						}
+						var feed = Dt.value.feeds[Dt.value.currentFeedIndex];
+						console.log("before GotoNextFeed", Dt, feed);
+						if (window.__wx_channels_events__) {
+							window.__wx_channels_events__.emit('GotoNextFeed', feed);
+						}
+					}`
 					js_script = jsGoToNextFlowReg.ReplaceAllString(js_script, replace_str1)
-					replace_str2 := fmt.Sprintf(`goToPrevFlowFeed:async function(v){
-									await $1(v);
-									setTimeout(() => {
-									var data_object = Dt.value.feeds[Dt.value.currentFeedIndex];
-									console.log("handle goto prev feed", Dt, data_object);
-									var media = data_object.objectDesc.media[0];
-									window.__wx_channels_cur_video = document.querySelector(".feed-video.video-js");
-									%v
-									if (window.__insert_download_btn_to_home_page) {
-				__insert_download_btn_to_home_page();
-									}
-									}, 0);
-									}`, media_profile_js)
+					replace_str2 := `goToPrevFlowFeed:async function(v){
+						await $1(v);
+						console.log('goToPrevFlowFeed', Dt);
+						if (!Dt || !Dt.value || !Dt.value.feeds) {
+							return;
+						}
+						var feed = Dt.value.feeds[Dt.value.currentFeedIndex];
+						console.log("before GotoPrevFeed", Dt, feed);
+						if (window.__wx_channels_events__) {
+							window.__wx_channels_events__.emit('GotoPrevFeed', feed);
+						}
+					}`
 					js_script = jsGoToPrevFlowReg.ReplaceAllString(js_script, replace_str2)
 					ctx.SetResponseBody(js_script)
 					return

@@ -27,6 +27,113 @@ function sleep() {
     }, 1000);
   });
 }
+/**
+ * 格式化 FeedProfile，从 feed 对象中提取视频信息
+ * 包含完善的空值检查，避免解析错误
+ * @param {Object} feed - 从 API 获取的 feed 对象
+ * @returns {Object|null} - 格式化后的 profile 对象，如果无法解析则返回 null
+ */
+function __wx_format_feed(feed) {
+  if (!feed) {
+    return null;
+  }
+  // 处理直播
+  if (feed.liveInfo) {
+    return {
+      ...feed,
+      type: "live",
+      title: feed.description || "直播",
+      url: feed.liveInfo.streamUrl,
+      coverUrl: (() => {
+        if (feed.anchorContact) {
+          return feed.anchorContact.liveCoverImgUrl;
+        }
+        if (feed.objectDesc && feed.objectDesc.media && feed.objectDesc.media[0]) {
+          return feed.objectDesc.media[0].coverUrl;
+        }
+        return "";
+      })(),
+      contact: (() => {
+        if (feed.anchorContact) {
+          return {
+            id: feed.anchorContact.username,
+            avatar_url: feed.anchorContact.headUrl,
+            nickname: feed.anchorContact.nickname,
+          };
+        }
+        if (feed.contact) {
+          return {
+            id: feed.contact.username,
+            nickname: feed.contact.nickname,
+            avatar_url: feed.contact.headUrl,
+          };
+        }
+        return null;
+      })(),
+    };
+  }
+  // 检查 objectDesc
+  if (!feed.objectDesc) {
+    return null;
+  }
+  var type = feed.objectDesc.mediaType;
+  // 直播类型（type === 9）没有 media
+  if (type === 9) {
+    return null;
+  }
+  // 检查 media 数组
+  if (!feed.objectDesc.media || !feed.objectDesc.media[0]) {
+    return null;
+  }
+  var media = feed.objectDesc.media[0];
+  // 图片视频（type === 2）
+  if (type === 2) {
+    return {
+      ...feed,
+      type: "picture",
+      id: feed.id,
+      nonce_id: feed.objectNonceId,
+      coverUrl: media.coverUrl || "",
+      title: feed.objectDesc.description || "",
+      files: feed.objectDesc.media,
+      spec: [],
+      contact: feed.contact ? {
+        id: feed.contact.username,
+        avatar_url: feed.contact.headUrl,
+        nickname: feed.contact.nickname,
+      } : null,
+    };
+  }
+  // 视频（type === 4）
+  if (type === 4) {
+    // 检查必要的字段
+    if (!media.url || !media.urlToken) {
+      console.warn('[format_feed] 视频 URL 信息不完整', media);
+      return null;
+    }
+    return {
+      ...feed,
+      type: "media",
+      id: feed.id,
+      nonce_id: feed.objectNonceId,
+      title: feed.objectDesc.description || "",
+      url: media.url + media.urlToken,
+      key: media.decodeKey || null,  // decodeKey 可能不存在（未加密视频）
+      coverUrl: media.coverUrl || "",
+      createtime: feed.createtime,
+      spec: media.spec || [],
+      size: media.fileSize ? Number(media.fileSize) : 0,
+      duration: media.videoPlayLen || (media.spec && media.spec[0] ? media.spec[0].durationMs : 0),
+      fileFormat: (media.spec || []).map(o => o.fileFormat),
+      contact: feed.contact ? {
+        id: feed.contact.username,
+        avatar_url: feed.contact.headUrl,
+        nickname: feed.contact.nickname,
+      } : null,
+    };
+  }
+  return null;
+}
 function __wx_channels_copy(text) {
   var textArea = document.createElement("textarea");
   textArea.value = text;
