@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ltaoo/echo"
@@ -15,17 +16,21 @@ import (
 )
 
 // getCreditBaseDir 获取积分密钥文件所在目录（用于检查 .use 文件）
-// 优先使用 credit.yaml 文件所在的目录，确保与加载密钥时的目录一致
+// 优先使用 credit.txt 文件所在的目录，确保与加载密钥时的目录一致
 func getCreditBaseDir(cfg *config.Config) string {
 	baseDir := ""
 	if exe, err := os.Executable(); err == nil {
 		baseDir = filepath.Dir(exe)
-		// 检查 credit.yaml 是否在可执行文件目录
-		creditPath := filepath.Join(baseDir, "credit.yaml")
+		// 检查 credit.txt 是否在可执行文件目录
+		creditPath := filepath.Join(baseDir, "credit.txt")
 		if _, err := os.Stat(creditPath); err != nil {
-			// 如果不在可执行文件目录，尝试使用配置文件目录
-			if cfg.FilePath != "" {
-				baseDir = filepath.Dir(cfg.FilePath)
+			// 如果 credit.txt 不存在，尝试检查 credit.yaml（兼容旧版本）
+			oldCreditPath := filepath.Join(baseDir, "credit.yaml")
+			if _, err := os.Stat(oldCreditPath); err != nil {
+				// 如果都不在可执行文件目录，尝试使用配置文件目录
+				if cfg.FilePath != "" {
+					baseDir = filepath.Dir(cfg.FilePath)
+				}
 			}
 		}
 	} else if cfg.FilePath != "" {
@@ -64,13 +69,32 @@ func handleCreditCheck(ctx *echo.Context, cfg *config.Config) {
 	// 从文件重新读取 encrypted 值（确保使用最新的值，而不是内存中的旧值）
 	encrypted := ""
 	if baseDir != "" {
-		keyPath := filepath.Join(baseDir, "credit.yaml")
+		keyPath := filepath.Join(baseDir, "credit.txt")
 		if _, err := os.Stat(keyPath); err == nil {
-			viperKey := viper.New()
-			viperKey.SetConfigFile(keyPath)
-			viperKey.SetConfigType("yaml")
-			if err := viperKey.ReadInConfig(); err == nil {
-				encrypted = viperKey.GetString("encrypted")
+			// 读取文本文件
+			data, err := os.ReadFile(keyPath)
+			if err == nil {
+				content := strings.TrimSpace(string(data))
+				if strings.HasPrefix(content, "encrypted=") {
+					encrypted = strings.TrimPrefix(content, "encrypted=")
+				} else {
+					// 兼容旧格式（直接是 encrypted 值）
+					if idx := strings.Index(content, "\n"); idx > 0 {
+						content = content[:idx]
+					}
+					encrypted = strings.TrimSpace(content)
+				}
+			}
+		} else {
+			// 兼容旧版本：尝试读取 credit.yaml
+			oldKeyPath := filepath.Join(baseDir, "credit.yaml")
+			if _, err := os.Stat(oldKeyPath); err == nil {
+				viperKey := viper.New()
+				viperKey.SetConfigFile(oldKeyPath)
+				viperKey.SetConfigType("yaml")
+				if err := viperKey.ReadInConfig(); err == nil {
+					encrypted = viperKey.GetString("encrypted")
+				}
 			}
 		}
 	}
@@ -153,13 +177,32 @@ func handleCreditConsume(ctx *echo.Context, cfg *config.Config) {
 
 	// 从文件重新读取 encrypted 值（确保使用最新的值，而不是内存中的旧值）
 	encrypted := ""
-	keyPath := filepath.Join(baseDir, "credit.yaml")
+	keyPath := filepath.Join(baseDir, "credit.txt")
 	if _, err := os.Stat(keyPath); err == nil {
-		viperKey := viper.New()
-		viperKey.SetConfigFile(keyPath)
-		viperKey.SetConfigType("yaml")
-		if err := viperKey.ReadInConfig(); err == nil {
-			encrypted = viperKey.GetString("encrypted")
+		// 读取文本文件
+		data, err := os.ReadFile(keyPath)
+		if err == nil {
+			content := strings.TrimSpace(string(data))
+			if strings.HasPrefix(content, "encrypted=") {
+				encrypted = strings.TrimPrefix(content, "encrypted=")
+			} else {
+				// 兼容旧格式（直接是 encrypted 值）
+				if idx := strings.Index(content, "\n"); idx > 0 {
+					content = content[:idx]
+				}
+				encrypted = strings.TrimSpace(content)
+			}
+		}
+	} else {
+		// 兼容旧版本：尝试读取 credit.yaml
+		oldKeyPath := filepath.Join(baseDir, "credit.yaml")
+		if _, err := os.Stat(oldKeyPath); err == nil {
+			viperKey := viper.New()
+			viperKey.SetConfigFile(oldKeyPath)
+			viperKey.SetConfigType("yaml")
+			if err := viperKey.ReadInConfig(); err == nil {
+				encrypted = viperKey.GetString("encrypted")
+			}
 		}
 	}
 

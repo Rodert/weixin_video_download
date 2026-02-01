@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -133,27 +134,45 @@ func LoadConfig() (*Config, error) {
 	return config, nil
 }
 
-// loadCreditKey 从独立的密钥文件加载积分密钥
+// loadCreditKey 从独立的密钥文件加载积分密钥（改为 credit.txt）
 func loadCreditKey(baseDir string) string {
-	// 密钥文件路径（与可执行文件同目录）
-	keyPath := filepath.Join(baseDir, "credit.yaml")
+	// 密钥文件路径（与可执行文件同目录，改为 credit.txt）
+	keyPath := filepath.Join(baseDir, "credit.txt")
 
 	// 检查文件是否存在
 	if _, err := os.Stat(keyPath); err != nil {
-		// 文件不存在，返回空字符串
+		// 文件不存在，尝试读取旧的 credit.yaml（兼容旧版本）
+		oldKeyPath := filepath.Join(baseDir, "credit.yaml")
+		if _, err := os.Stat(oldKeyPath); err == nil {
+			viperKey := viper.New()
+			viperKey.SetConfigFile(oldKeyPath)
+			viperKey.SetConfigType("yaml")
+			if err := viperKey.ReadInConfig(); err == nil {
+				return viperKey.GetString("encrypted")
+			}
+		}
 		return ""
 	}
 
-	// 读取密钥文件
-	viperKey := viper.New()
-	viperKey.SetConfigFile(keyPath)
-	viperKey.SetConfigType("yaml")
-
-	if err := viperKey.ReadInConfig(); err != nil {
-		// 读取失败，返回空字符串
+	// 读取文本文件（简单格式：encrypted=xxx 或直接是 encrypted 值）
+	data, err := os.ReadFile(keyPath)
+	if err != nil {
 		return ""
 	}
 
-	// 获取 encrypted 字段
-	return viperKey.GetString("encrypted")
+	content := strings.TrimSpace(string(data))
+
+	// 支持两种格式：
+	// 1. encrypted=xxx
+	// 2. 直接是 encrypted 值（兼容旧格式）
+	if strings.HasPrefix(content, "encrypted=") {
+		return strings.TrimPrefix(content, "encrypted=")
+	}
+
+	// 如果包含换行，取第一行
+	if idx := strings.Index(content, "\n"); idx > 0 {
+		content = content[:idx]
+	}
+
+	return strings.TrimSpace(content)
 }

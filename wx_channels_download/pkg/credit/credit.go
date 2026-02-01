@@ -35,9 +35,10 @@ var (
 
 // CreditInfo 积分信息
 type CreditInfo struct {
-	Points  int64 `json:"points"`   // 积分数量
-	StartAt int64 `json:"start_at"` // 开始时间戳（Unix时间戳，当天0点）
-	EndAt   int64 `json:"end_at"`   // 结束时间戳（Unix时间戳，当天23:59:59）
+	Version string `json:"version"` // 版本号（用于版本隔离，v1, v2, v3, v4, v5...）
+	Points  int64  `json:"points"`  // 积分数量
+	StartAt int64  `json:"start_at"` // 开始时间戳（Unix时间戳，当天0点）
+	EndAt   int64  `json:"end_at"`   // 结束时间戳（Unix时间戳，当天23:59:59）
 }
 
 var (
@@ -45,8 +46,46 @@ var (
 	creditMutex sync.Mutex
 )
 
-// EncryptCreditInfo 加密积分信息
+// ReadVersion 从 version.txt 读取版本号，失败时返回默认版本 v1
+// 支持任意版本号格式：v1, v2, v3, v4, v5...
+func ReadVersion(baseDir string) (string, error) {
+	if baseDir == "" {
+		if exe, err := os.Executable(); err == nil {
+			baseDir = filepath.Dir(exe)
+		}
+	}
+	if baseDir == "" {
+		return "v1", nil // 无法确定目录时返回默认版本 v1
+	}
+
+	versionPath := filepath.Join(baseDir, "version.txt")
+	data, err := os.ReadFile(versionPath)
+	if err != nil {
+		return "v1", nil // 读取失败时返回默认版本 v1
+	}
+
+	version := strings.TrimSpace(string(data))
+	if version == "" {
+		return "v1", nil // 版本号为空时返回默认版本 v1
+	}
+
+	// 支持任意版本号格式（v1, v2, v3, v4, v5...）
+	return version, nil
+}
+
+// GetCurrentVersion 获取当前版本号（读取失败时返回 v1）
+func GetCurrentVersion() string {
+	version, _ := ReadVersion("") // 忽略错误，失败时返回 v1
+	return version
+}
+
+// EncryptCreditInfo 加密积分信息（自动包含版本号）
 func EncryptCreditInfo(info *CreditInfo) (string, error) {
+	// 如果版本号为空，自动读取当前版本号
+	if info.Version == "" {
+		info.Version = GetCurrentVersion() // 失败时返回 v1
+	}
+
 	// 序列化为 JSON
 	data, err := json.Marshal(info)
 	if err != nil {
@@ -120,6 +159,19 @@ func DecryptCreditInfo(encrypted string) (*CreditInfo, error) {
 	var info CreditInfo
 	if err := json.Unmarshal(plaintext, &info); err != nil {
 		return nil, fmt.Errorf("反序列化失败: %w", err)
+	}
+
+	// 如果版本号为空（兼容旧版本），默认使用 v1
+	if info.Version == "" {
+		info.Version = "v1"
+	}
+
+	// 读取当前版本号（失败时返回 v1）
+	currentVersion := GetCurrentVersion()
+
+	// 验证版本号是否匹配（支持任意版本号：v1, v2, v3, v4, v5...）
+	if info.Version != currentVersion {
+		return nil, fmt.Errorf("版本不匹配：密钥版本 %s，当前版本 %s", info.Version, currentVersion)
 	}
 
 	return &info, nil
@@ -372,7 +424,7 @@ func ConsumeCreditWithBaseDir(encrypted, baseDir string, cost int64) (string, *C
 	return newEncrypted, info, nil
 }
 
-// UpdateCreditInKeyFile 线程安全地更新独立的密钥文件
+// UpdateCreditInKeyFile 线程安全地更新独立的密钥文件（改为 credit.txt）
 func UpdateCreditInKeyFile(baseDir string, newEncrypted string) error {
 	creditMutex.Lock()
 	defer creditMutex.Unlock()
@@ -381,57 +433,35 @@ func UpdateCreditInKeyFile(baseDir string, newEncrypted string) error {
 		return errors.New("基础目录路径为空")
 	}
 
-	// 密钥文件路径
-	keyPath := filepath.Join(baseDir, "credit.yaml")
+	// 密钥文件路径（改为 credit.txt）
+	keyPath := filepath.Join(baseDir, "credit.txt")
 
-	// 1. 读取现有密钥文件（如果存在）
-	viperKey := viper.New()
-	viperKey.SetConfigFile(keyPath)
-	viperKey.SetConfigType("yaml")
-
-	var existingData map[string]interface{}
-	if _, err := os.Stat(keyPath); err == nil {
-		if err := viperKey.ReadInConfig(); err == nil {
-			existingData = viperKey.AllSettings()
-		}
-	}
-
-	// 2. 备份原密钥文件（可选，用于回滚）
+	// 备份原密钥文件（可选，用于回滚）
 	backupPath := keyPath + ".backup"
 	if _, err := os.Stat(keyPath); err == nil {
 		_ = copyFile(keyPath, backupPath) // 备份失败不影响主流程
 	}
 
-	// 3. 更新积分
-	if existingData == nil {
-		existingData = make(map[string]interface{})
-	}
-	existingData["encrypted"] = newEncrypted
+	// 原子性写入（先写临时文件，再重命名）
+	tempPath := keyPath + ".tmp"
 
-	// 4. 创建新的 viper 实例用于写入
-	viperWrite := viper.New()
-	viperWrite.SetConfigType("yaml")
-	for key, value := range existingData {
-		viperWrite.Set(key, value)
-	}
-
-	// 5. 原子性写入（先写临时文件，再重命名）
-	// 使用 .tmp.yaml 扩展名，确保 Viper 能识别为 YAML 格式
-	tempPath := strings.TrimSuffix(keyPath, ".yaml") + ".tmp.yaml"
-	if err := viperWrite.WriteConfigAs(tempPath); err != nil {
+	// 写入简单文本格式：encrypted=xxx
+	content := "encrypted=" + newEncrypted + "\n"
+	if err := os.WriteFile(tempPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("写入临时密钥文件失败: %w", err)
 	}
 
-	// 6. 原子性替换（重命名是原子操作）
+	// 原子性替换（重命名是原子操作）
 	if err := os.Rename(tempPath, keyPath); err != nil {
 		// 如果失败，尝试恢复备份
 		if _, err2 := os.Stat(backupPath); err2 == nil {
 			_ = os.Rename(backupPath, keyPath)
 		}
+		_ = os.Remove(tempPath) // 清理临时文件
 		return fmt.Errorf("更新密钥文件失败: %w", err)
 	}
 
-	// 7. 删除备份（成功后才删除）
+	// 删除备份（成功后才删除）
 	_ = os.Remove(backupPath)
 
 	return nil
@@ -500,7 +530,11 @@ func GenerateCreditInfoByDays(points int64, days int64) (*CreditInfo, error) {
 	durationSeconds := days * 24 * 60 * 60
 	endAt := startAt + durationSeconds
 
+	// 读取版本号（失败时返回 v1）
+	version := GetCurrentVersion()
+
 	return &CreditInfo{
+		Version: version, // 添加版本号
 		Points:  points,
 		StartAt: startAt,
 		EndAt:   endAt,
@@ -530,7 +564,11 @@ func GenerateCreditInfo(points int64, startDate, endDate string) (*CreditInfo, e
 		return nil, errors.New("开始日期不能晚于结束日期")
 	}
 
+	// 读取版本号（失败时返回 v1）
+	version := GetCurrentVersion()
+
 	return &CreditInfo{
+		Version: version, // 添加版本号
 		Points:  points,
 		StartAt: startAt,
 		EndAt:   endAt,
