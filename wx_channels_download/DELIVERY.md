@@ -210,7 +210,11 @@ encrypted=生成的加密字符串
 
 1. **生成新密钥**
    ```bash
+   # 单个密钥生成
    go run . generate-credit --points 1000 --days 7
+   
+   # 批量生成（适用于多个客户）
+   go run . batch-generate --points 1000 --days 7 --count 10 > keys.txt
    ```
 
 2. **提供给客户**
@@ -226,6 +230,30 @@ encrypted=生成的加密字符串
 - 每个密钥只能使用一次，使用后会被记录到 `.use` 文件
 - 如果客户尝试重复使用已用完的密钥，系统会拒绝
 - 续期时需要提供全新的密钥，不能使用之前已使用过的密钥
+- **版本兼容性**：所有密钥都包含版本号，只能在对应版本使用。升级版本后需要重新生成密钥
+
+### 批量密钥生成
+
+适用于需要一次性生成多个密钥的场景：
+
+```bash
+# 生成 100 个密钥，每个包含 10 积分，有效期 7 天
+go run . batch-generate --points 10 --days 7 --count 100
+
+# 生成密钥并保存到文件
+go run . batch-generate --points 10 --days 7 --count 100 > keys.txt
+
+# 生成不同规格的密钥
+go run . batch-generate --points 100 --days 30 --count 50 > keys_100_30.txt
+```
+
+**版本兼容性**：
+- 所有生成的密钥都会自动包含当前版本号（从 `version.txt` 读取或嵌入的版本号）
+- 确保生成的密钥只能在相同版本的应用程序中使用
+- 不同版本的密钥互不兼容，防止跨版本使用
+- 升级版本后，旧版本密钥将无法使用，需要重新生成
+
+**详细文档**：参考 [`docs/cli/batch_generate.md`](docs/cli/batch_generate.md)
 
 ### 配置文件位置
 

@@ -922,6 +922,8 @@ CGO_ENABLED=1 GOOS=darwin SDKROOT=$(xcrun --sdk macosx --show-sdk-path) go build
 
 ### 生成积分配置
 
+#### 单个密钥生成
+
 使用 `generate-credit` 命令生成加密的积分配置：
 
 ```bash
@@ -943,6 +945,43 @@ go run main.go generate-credit --help
 - 有效期从用户首次使用积分下载时开始计算
 - 例如：生成 7 天有效期的密钥，用户在第 5 天首次使用，则有效期到第 12 天
 - 确保用户获得完整的有效期，不会因为生成时间而损失
+
+#### 批量密钥生成
+
+使用 `batch-generate` 命令批量生成多个密钥：
+
+```bash
+# 生成 100 个密钥，每个包含 10 积分，有效期 7 天
+go run main.go batch-generate --points 10 --days 7 --count 100
+
+# 生成密钥并保存到文件
+go run main.go batch-generate --points 10 --days 7 --count 100 > keys.txt
+
+# 查看帮助
+go run main.go batch-generate --help
+```
+
+**命令参数**：
+- `--points`：单组积分数量（必填，必须大于 0，默认：10）
+- `--days`：单组有效天数（必填，必须大于 0，从首次使用时开始计算，默认：7）
+- `--count`：生成组数（必填，必须大于 0，默认：100）
+
+**版本兼容性**：
+- 所有生成的密钥都会自动包含当前版本号（从 `version.txt` 读取或嵌入的版本号）
+- 确保生成的密钥只能在相同版本的应用程序中使用
+- 不同版本的密钥互不兼容，防止跨版本使用
+- 升级版本后，旧版本密钥将无法使用，需要重新生成
+
+**输出格式**：
+- 标准输出（stdout）：每行一个加密的密钥字符串，便于重定向到文件
+- 标准错误输出（stderr）：包含生成信息和提示
+
+**使用场景**：
+- 批量分发密钥给多个用户
+- 一次性生成大量密钥用于库存管理
+- 需要将密钥保存到文件进行后续处理
+
+**详细文档**：参考 [`docs/cli/batch_generate.md`](../docs/cli/batch_generate.md)
 
 **使用流程**：
 1. 运行命令生成加密字符串：
