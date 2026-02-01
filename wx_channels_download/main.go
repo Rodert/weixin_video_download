@@ -10,6 +10,7 @@ import (
 	"wx_channel/cmd"
 	"wx_channel/config"
 	"wx_channel/internal/interceptor"
+	"wx_channel/pkg/credit"
 	"wx_channel/pkg/platform"
 )
 
@@ -48,6 +49,9 @@ var js_live_main []byte
 
 //go:embed inject/download_list.js
 var js_download_list []byte
+
+//go:embed version.txt
+var embeddedVersion []byte
 
 var FilesCert = &interceptor.ServerCertFiles{
 	CertFile:       cert_file,
@@ -113,7 +117,31 @@ func getVersion() string {
 	return getBuildTime()
 }
 
+// getEmbeddedVersionText 获取嵌入的版本号文本
+func getEmbeddedVersionText() string {
+	if len(embeddedVersion) == 0 {
+		return ""
+	}
+	// 去除所有空白字符（空格、制表符、换行符、回车符等）
+	version := strings.TrimSpace(string(embeddedVersion))
+	// 去除 BOM（字节顺序标记）
+	version = strings.TrimPrefix(version, "\ufeff")
+	// 去除所有空白字符后再次检查
+	version = strings.TrimSpace(version)
+	// 只取第一行（如果有换行符）
+	if idx := strings.Index(version, "\n"); idx > 0 {
+		version = strings.TrimSpace(version[:idx])
+	}
+	if idx := strings.Index(version, "\r"); idx > 0 {
+		version = strings.TrimSpace(version[:idx])
+	}
+	return version
+}
+
 func main() {
+	// 设置嵌入版本号的获取函数（优先使用嵌入的版本号）
+	credit.SetEmbeddedVersionFunc(getEmbeddedVersionText)
+	
 	// Windows 特定处理：设置控制台标题和禁用快速编辑模式
 	setConsoleTitle()
 	setConsoleFont()

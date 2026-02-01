@@ -130,9 +130,25 @@ func ReadVersion(baseDir string) (string, error) {
 }
 
 // GetCurrentVersion 获取当前版本号（读取失败时返回 v1）
+// 优先使用嵌入的版本号，如果未提供则从文件系统读取
 func GetCurrentVersion() string {
+	// 如果提供了嵌入的版本号，优先使用
+	if getEmbeddedVersion != nil {
+		if embeddedVersion := getEmbeddedVersion(); embeddedVersion != "" {
+			return embeddedVersion
+		}
+	}
+	// 否则从文件系统读取
 	version, _ := ReadVersion("") // 忽略错误，失败时返回 v1
 	return version
+}
+
+// getEmbeddedVersion 函数指针，由 main 包设置，用于获取嵌入的版本号
+var getEmbeddedVersion func() string
+
+// SetEmbeddedVersionFunc 设置嵌入版本号的获取函数
+func SetEmbeddedVersionFunc(fn func() string) {
+	getEmbeddedVersion = fn
 }
 
 // EncryptCreditInfo 加密积分信息（自动包含版本号）
